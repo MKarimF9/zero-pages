@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 DEFAULT_PATH = Path("~/.pi-ereader/state.json").expanduser()
@@ -20,7 +21,7 @@ FINISHED_AT = 0.98  # progress at which a book counts as finished
 class ReadingState:
     def __init__(self, path: str | Path = DEFAULT_PATH):
         self.path = Path(path).expanduser()
-        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "settings": {}, "last_book": None}
+        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "opened": {}, "settings": {}, "last_book": None}
         try:
             self._data.update(json.loads(self.path.read_text()))
         except (FileNotFoundError, json.JSONDecodeError):
@@ -43,6 +44,7 @@ class ReadingState:
                      chapter: str = "") -> None:
         self._data["positions"][book] = [section, page]
         self._data["chapters"][book] = chapter
+        self._data["opened"][book] = time.time()
         self._data["progress"][book] = round(progress, 4)
         self._data["last_book"] = book
         self.save()
@@ -50,6 +52,10 @@ class ReadingState:
     def get_progress(self, book: str) -> float:
         """Fraction of the book read (0..1), for the library's progress bars."""
         return float(self._data["progress"].get(book, 0.0))
+
+    def get_opened(self, book: str) -> float:
+        """When the book was last read (a timestamp); 0 if never."""
+        return float(self._data["opened"].get(book, 0.0))
 
     def get_chapter(self, book: str) -> str:
         """Title of the chapter you were last in (for the library's Continue card)."""

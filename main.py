@@ -17,7 +17,7 @@ from pathlib import Path
 from ereader.controls import Button, GPIOControls, KeyboardControls
 from ereader.display import EPaperDisplay, PNGDisplay
 from ereader.fonts import DEFAULT_FAMILY, Fonts
-from ereader.screens import AppContext, initial_screen
+from ereader.screens import AppContext, effective_button, initial_screen
 from ereader.state import ReadingState
 
 
@@ -52,7 +52,7 @@ def main() -> None:
     )
 
     if args.controls == "keyboard":
-        print("Keys: w/k = up, s/j = down, space/enter = select, q = quit")
+        print("Keys: w/k = up, s/j = down, space/enter = select, m = hold select (options), q = quit")
 
     # systemd stops the service with SIGTERM: turn it into a normal exit so the
     # finally block below saves progress and puts the panel to sleep.
@@ -65,7 +65,7 @@ def main() -> None:
             button = controls.wait()
             if button is Button.QUIT:
                 break
-            screen = screen.handle(button) or screen
+            screen = screen.handle(effective_button(button, screen)) or screen
     finally:
         screen.close()  # e.g. save reading progress
         display.sleep()

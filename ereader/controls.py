@@ -15,6 +15,7 @@ class Button(Enum):
     UP = auto()
     DOWN = auto()
     SELECT = auto()
+    SELECT_LONG = auto()  # hold select (keyboard: m): options on screens that have them
     QUIT = auto()  # dev only; the real device has no quit button
 
 
@@ -25,12 +26,13 @@ class Controls(ABC):
 
 
 class KeyboardControls(Controls):
-    """w/k = up, s/j = down, space/enter = select, q = quit."""
+    """w/k = up, s/j = down, space/enter = select, m = hold select, q = quit."""
 
     KEYMAP = {
         "w": Button.UP, "k": Button.UP,
         "s": Button.DOWN, "j": Button.DOWN,
         " ": Button.SELECT, "\r": Button.SELECT, "\n": Button.SELECT,
+        "m": Button.SELECT_LONG,
         "q": Button.QUIT, "\x03": Button.QUIT,  # \x03 = Ctrl+C in raw mode
     }
 
@@ -71,17 +73,34 @@ class GPIOControls(Controls):
     """
 
     def __init__(self, up_pin: int, down_pin: int, select_pin: int,
-                 bounce_time: float = 0.05, button_factory=None):
+                 bounce_time: float = 0.05, hold_time: float = 0.7, button_factory=None):
         if button_factory is None:
             from gpiozero import Button as GPIOButton
             button_factory = GPIOButton
         self._events: queue.Queue[Button] = queue.Queue()
         self._buttons = []  # keep references: gpiozero closes a button when it's garbage-collected
-        for pin, button in ((up_pin, Button.UP), (down_pin, Button.DOWN),
-                            (select_pin, Button.SELECT)):
+        for pin, button in ((up_pin, Button.UP), (down_pin, Button.DOWN)):
             gpio_button = button_factory(pin, bounce_time=bounce_time)
             gpio_button.when_pressed = lambda b=button: self._events.put(b)
             self._buttons.append(gpio_button)
+
+        # Select tells a tap from a hold: held for hold_time -> SELECT_LONG at that
+        # moment; released earlier -> SELECT (so a tap is reported on release).
+        select = button_factory(select_pin, bounce_time=bounce_time, hold_time=hold_time)
+        self._select_held = False
+        select.when_held = self._on_select_held
+        select.when_released = self._on_select_released
+        self._buttons.append(select)
+
+    def _on_select_held(self) -> None:
+        self._select_held = True
+        self._events.put(Button.SELECT_LONG)
+
+    def _on_select_released(self) -> None:
+        if self._select_held:
+            self._select_held = False  # the hold was already reported
+        else:
+            self._events.put(Button.SELECT)
 
     def wait(self) -> Button:
         return self._events.get()
