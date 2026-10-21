@@ -35,6 +35,9 @@ ICONS = {
     "local_library": "\ue54b",
     "arrow_back": "\ue5c4",
     "bookmark": "\ue8e7",
+    "sort": "\ue164",
+    "filter_list": "\ue152",
+    "tune": "\ue429",
     "check_circle": "\uf0be",
     "library_books": "\ue02f",
     "menu_book": "\uea19",
@@ -143,7 +146,8 @@ def draw_hints(d: ImageDraw.ImageDraw, fonts: Fonts, width: int, mid_y: float,
 
 def list_frame(img, ctx_fonts: Fonts, title: str, right: str = "",
                labels: tuple[str, str, str] = ("Up", "Select", "Down"),
-               icon: str | None = None) -> tuple[ImageDraw.ImageDraw, int, int]:
+               icon: str | None = None, hint_fonts: Fonts | None = None
+               ) -> tuple[ImageDraw.ImageDraw, int, int]:
     """Header (title + page indicator) and footer (button hints) for a list
     screen. Returns (draw, body_top, body_bottom): where the rows go."""
     d = ImageDraw.Draw(img)
@@ -157,5 +161,5 @@ def list_frame(img, ctx_fonts: Fonts, title: str, right: str = "",
         d.text((w - PAD, bar / 2), right, font=ctx_fonts.get(), fill=BLACK, anchor="rm")
     d.line((0, bar, w, bar), fill=BLACK, width=2)
     d.line((0, h - bar, w, h - bar), fill=BLACK, width=2)
-    draw_hints(d, ctx_fonts, w, h - bar / 2 + 1, labels)
+    draw_hints(d, hint_fonts or ctx_fonts, w, h - bar / 2 + 1, labels)
     return d, bar + 2, h - bar - 2

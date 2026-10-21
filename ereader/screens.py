@@ -71,6 +71,7 @@ def draw_message(ctx: AppContext, lines: list[str]) -> Image.Image:
 
 class Screen(ABC):
     full_refresh: bool = True  # should the next frame clear ghosting?
+    handles_long_press = False  # does holding select mean something here?
 
     @abstractmethod
     def render(self) -> Image.Image: ...
@@ -80,6 +81,49 @@ class Screen(ABC):
 
     def close(self) -> None:
         """Called when the app quits. Screens with state to flush override this."""
+
+
+def effective_button(button: Button, screen: Screen) -> Button:
+    """Holding select only means something on the library; elsewhere it's a plain select."""
+    if button is Button.SELECT_LONG and not screen.handles_long_press:
+        return Button.SELECT
+    return button
+
+
+SORTS = {"recent": "Recent", "title": "Title", "author": "Author"}
+FILTERS = {"all": "All", "reading": "Reading", "new": "New", "finished": "Finished"}
+
+
+def sort_books(infos: list, sort: str, state: ReadingState) -> list:
+    """Order the library: most recently read first, or by title or author."""
+    if sort == "title":
+        return sorted(infos, key=lambda b: b.title.casefold())
+    if sort == "author":
+        return sorted(infos, key=lambda b: (b.author.casefold(), b.title.casefold()))
+    return sorted(infos, key=lambda b: (-state.get_opened(str(b.path)),
+                                        str(b.path) != state.last_book, b.title.casefold()))
+
+
+def _next(options: dict, current: str) -> str:
+    keys = list(options)
+    return keys[(keys.index(current) + 1) % len(keys)] if current in keys else keys[0]
+
+
+def _draw_menu_rows(ctx: "AppContext", d: ImageDraw.ImageDraw, top: int,
+                    rows: list[tuple[str, str, str]], cursor: int) -> None:
+    """Rows of (icon, label, value), the cursor row inverted. Shared by the
+    reader menu and the library options."""
+    ui, w = ctx.ui_fonts, ctx.width
+    row_h = ui.line_height + 12
+    for i, (icon, label, value) in enumerate(rows):
+        y0 = top + 6 + i * row_h
+        fg = WHITE if i == cursor else BLACK
+        if i == cursor:
+            d.rectangle((0, y0, w, y0 + row_h - 1), fill=BLACK)
+        draw_icon(d, icon, PAD, y0 + row_h / 2, 22, fill=fg)
+        draw_text(d, ui, label, PAD + 32, w - PAD - 90, y0 + row_h / 2, fill=fg, align="left")
+        if value:
+            d.text((w - PAD, y0 + row_h / 2), value, font=ui.get(), fill=fg, anchor="rm")
 
 
 def _move(cursor: int, count: int, button: Button) -> int:
@@ -95,18 +139,24 @@ def _move(cursor: int, count: int, button: Button) -> int:
 
 class LibraryScreen(Screen):
     """Books with cover, author and status. If you're partway through one, it
-    sits on top as a larger "Continue reading" card."""
+    sits on top as a larger "Continue reading" card. Hold select for options."""
+
+    handles_long_press = True
 
     def __init__(self, ctx: AppContext):
         self.ctx = ctx
         index = BookIndex(ctx.state.path.parent / "library.json")  # next to the reading state
+        self.sort = ctx.state.get_setting("library_sort", "recent")
+        self.filter = ctx.state.get_setting("library_filter", "all")
         infos = index.scan(ctx.books_dir)
-        infos.sort(key=lambda b: str(b.path) != ctx.state.last_book)  # last-read first (stable)
+        if self.filter != "all":
+            infos = [b for b in infos if ctx.state.status(str(b.path)) == self.filter]
+        infos = sort_books(infos, self.sort, ctx.state)
         self.infos = infos
         self.books = [b.path for b in infos]
         self.meta = [(b.title, b.author) for b in infos]  # (title, author)
-        # the last-read book becomes the card, unless it's finished
-        self.has_card = bool(infos) and str(infos[0].path) == ctx.state.last_book \
+        # the last-read book becomes the card (only when sorted by recent), unless it's finished
+        self.has_card = self.sort == "recent" and bool(infos) and str(infos[0].path) == ctx.state.last_book \
             and ctx.state.status(str(infos[0].path)) == "reading"
         self.cursor = 0
         self.full_refresh = True
@@ -144,13 +194,18 @@ class LibraryScreen(Screen):
     def render(self) -> Image.Image:
         ctx = self.ctx
         if not self.books:
+            if self.filter != "all":
+                return draw_message(ctx, ["No books match", f"Showing: {FILTERS[self.filter]} books",
+                                          "", "Hold select to change the filter."])
             return draw_message(ctx, ["No books found", f"Copy .epub files into {ctx.books_dir}"])
 
         pages = self._pages()
         page = next(n for n, (a, b) in enumerate(pages) if a <= self.cursor < b)
         img = blank(ctx)
-        d, y, _ = list_frame(img, ctx.ui_fonts, "Library", f"{page + 1}/{len(pages)}",
-                             icon="library_books")
+        tag = f"{FILTERS[self.filter]} · " if self.filter != "all" else ""
+        d, y, _ = list_frame(img, ctx.ui_fonts, "Library",
+                             f"{tag}{SORTS[self.sort]}  {page + 1}/{len(pages)}", icon="library_books",
+                             labels=("Up", "Open · hold: options", "Down"), hint_fonts=ctx.small)
         for i in range(*pages[page]):
             height = self._height(i)
             selected = i == self.cursor
@@ -245,12 +300,52 @@ class LibraryScreen(Screen):
         self._draw_status(d, self.books[i], x0, x1, y0 + height - 12, fg, rtl)
 
     def handle(self, button: Button) -> Screen | None:
+        if button is Button.SELECT_LONG:
+            return LibraryOptionsScreen(self.ctx)
         if not self.books:
             return None
         if button is Button.SELECT:
             return ReaderScreen(self.ctx, self.books[self.cursor])
         self.cursor = _move(self.cursor, len(self.books), button)
         self.full_refresh = False  # only the highlight moved: partial refresh is fine
+        return None
+
+
+class LibraryOptionsScreen(Screen):
+    """Sort and filter the library. Choices are remembered."""
+
+    def __init__(self, ctx: AppContext):
+        self.ctx = ctx
+        self.cursor = 0
+        self.full_refresh = True
+
+    def _rows(self) -> list[tuple[str, str, str, str]]:
+        """(key, icon, label, value)"""
+        state = self.ctx.state
+        return [("sort", "sort", "Sort by", SORTS[state.get_setting("library_sort", "recent")]),
+                ("filter", "filter_list", "Show", FILTERS[state.get_setting("library_filter", "all")]),
+                ("back", "arrow_back", "Back to library", "")]
+
+    def render(self) -> Image.Image:
+        img = blank(self.ctx)
+        d, top, _ = list_frame(img, self.ctx.ui_fonts, "Library options", icon="tune")
+        _draw_menu_rows(self.ctx, d, top, [r[1:] for r in self._rows()], self.cursor)
+        return img
+
+    def handle(self, button: Button) -> Screen | None:
+        rows = self._rows()
+        if button is not Button.SELECT:
+            self.cursor = _move(self.cursor, len(rows), button)
+            self.full_refresh = False
+            return None
+        state, key = self.ctx.state, rows[self.cursor][0]
+        if key == "sort":
+            state.set_setting("library_sort", _next(SORTS, state.get_setting("library_sort", "recent")))
+        elif key == "filter":
+            state.set_setting("library_filter", _next(FILTERS, state.get_setting("library_filter", "all")))
+        else:
+            return LibraryScreen(self.ctx)
+        self.full_refresh = False
         return None
 
 
@@ -362,6 +457,8 @@ class ReaderScreen(Screen):
         if button is Button.SELECT:
             return MenuScreen(self.ctx, self)
 
+        if button not in (Button.UP, Button.DOWN):
+            return None
         try:
             moved = self.book.next() if button is Button.DOWN else self.book.prev()
         except Exception as e:  # a section failed to lay out
@@ -413,18 +510,7 @@ class MenuScreen(Screen):
         img = blank(ctx)
         percent = f"{round(self.reader.book.progress * 100)}%"
         d, top, _ = list_frame(img, ctx.ui_fonts, "Menu", percent, icon="menu_book")
-        ui, w = ctx.ui_fonts, ctx.width
-        row_h = ui.line_height + 12
-        for i, (_, icon, label, value) in enumerate(self._items()):
-            y0 = top + 6 + i * row_h
-            selected = i == self.cursor
-            fg = WHITE if selected else BLACK
-            if selected:
-                d.rectangle((0, y0, w, y0 + row_h - 1), fill=BLACK)
-            draw_icon(d, icon, PAD, y0 + row_h / 2, 22, fill=fg)
-            draw_text(d, ui, label, PAD + 32, w - PAD - 50, y0 + row_h / 2, fill=fg, align="left")
-            if value:
-                d.text((w - PAD, y0 + row_h / 2), value, font=ui.get(), fill=fg, anchor="rm")
+        _draw_menu_rows(ctx, d, top, [i[1:] for i in self._items()], self.cursor)
         return img
 
     def handle(self, button: Button) -> Screen | None:

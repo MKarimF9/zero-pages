@@ -102,18 +102,40 @@ def test_new_frame_cancels_idle_sleep():
 # ---------------------------------------------------------------- buttons
 
 class FakeGPIOButton:
-    def __init__(self, pin, bounce_time):
-        self.pin, self.bounce_time, self.when_pressed = pin, bounce_time, None
+    def __init__(self, pin, bounce_time, hold_time=None):
+        self.pin, self.bounce_time, self.hold_time = pin, bounce_time, hold_time
+        self.when_pressed = self.when_released = self.when_held = None
+
+
+def make_controls():
+    made = []
+    def factory(pin, **kwargs):
+        made.append(FakeGPIOButton(pin, **kwargs))
+        return made[-1]
+    return GPIOControls(5, 6, 13, button_factory=factory), made
 
 
 def test_gpio_buttons_map_to_events():
-    made = []
-    def factory(pin, bounce_time):
-        made.append(FakeGPIOButton(pin, bounce_time))
-        return made[-1]
-    controls = GPIOControls(5, 6, 13, button_factory=factory)
+    controls, made = make_controls()
+    up, down, select = made
     assert [b.pin for b in made] == [5, 6, 13] and all(b.bounce_time > 0 for b in made)
-    made[1].when_pressed()   # down
-    made[0].when_pressed()   # up
-    made[2].when_pressed()   # select
+    down.when_pressed()
+    up.when_pressed()
+    select.when_released()   # a tap: select is reported on release
     assert [controls.wait() for _ in range(3)] == [Button.DOWN, Button.UP, Button.SELECT]
+
+
+def test_holding_select_is_a_long_press_and_not_also_a_tap():
+    controls, made = make_controls()
+    select = made[2]
+    assert select.hold_time and select.hold_time > 0.3
+    select.when_held()       # held long enough: reported immediately
+    select.when_released()   # letting go afterwards must not add a SELECT
+    select.when_released()   # ...but the next ordinary tap still works
+    assert controls.wait() == Button.SELECT_LONG and controls.wait() == Button.SELECT
+    assert controls._events.empty()
+
+
+def test_keyboard_m_is_hold_select():
+    from ereader.controls import KeyboardControls
+    assert KeyboardControls.KEYMAP["m"] is Button.SELECT_LONG
