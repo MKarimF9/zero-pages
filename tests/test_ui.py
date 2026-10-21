@@ -6,6 +6,7 @@ from ereader.fonts import Fonts
 from ereader.screens import (AppContext, LibraryScreen, MenuScreen, ReaderScreen, TocScreen,
                              initial_screen)
 from ereader.state import ReadingState
+from tests.fakes import select_row
 from tests.make_epub import make_epub
 
 
@@ -42,7 +43,7 @@ def test_menu_resume_and_library(tmp_path):
     menu = reader.handle(B.SELECT)
     assert menu.handle(B.SELECT) is reader and reader.full_refresh  # Resume clears ghosting
     menu = reader.handle(B.SELECT)
-    menu.cursor = 5  # Back to library
+    select_row(menu, "library")
     assert isinstance(menu.handle(B.SELECT), LibraryScreen) and reader.book is None
 
 
@@ -50,7 +51,7 @@ def test_font_family_cycles_and_is_remembered(tmp_path):
     ctx, state, reader = open_reader(tmp_path)
     assert ctx.fonts.family == "Literata"
     menu = reader.handle(B.SELECT)
-    menu.cursor = 2  # "Font"
+    select_row(menu, "family")
     for expected in ("Noto Serif", "Charis SIL", "Literata"):
         assert menu.handle(B.SELECT) is None and ctx.fonts.family == expected
     assert state.get_setting("font_family") == "Literata" and ctx.fonts.size == 22
@@ -60,7 +61,7 @@ def test_font_family_cycles_and_is_remembered(tmp_path):
 def test_font_size_cycles_and_is_remembered(tmp_path):
     ctx, state, reader = open_reader(tmp_path)
     menu = reader.handle(B.SELECT)
-    menu.cursor = 3
+    select_row(menu, "font")
     assert menu.handle(B.SELECT) is None and ctx.fonts.size == 24
     assert state.get_setting("font_size") == 24
     assert reader.book.fonts is ctx.fonts  # the book was re-laid out with the new font
