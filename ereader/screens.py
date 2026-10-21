@@ -164,6 +164,15 @@ class LibraryScreen(Screen):
             y += height
         return img
 
+    def _columns(self, cover_w: int, rtl: bool) -> tuple[int, int, int]:
+        """(cover x, text left, text right). Arabic rows are mirrored: the
+        cover moves to the right and the text is right-aligned beside it."""
+        w = self.ctx.width
+        if rtl:
+            cover_x = w - PAD - cover_w
+            return cover_x, PAD, cover_x - 12
+        return PAD, PAD + cover_w + 12, w - PAD
+
     def _paste_cover(self, img, d, i, size, x, y0, height, selected) -> None:
         cover = self._cover(i, size)
         cy = y0 + (height - cover.height) // 2
@@ -171,46 +180,69 @@ class LibraryScreen(Screen):
             d.rectangle((x - 2, cy - 2, x + cover.width + 1, cy + cover.height + 1), fill=WHITE)
         img.paste(cover, (x, cy))
 
-    def _draw_status(self, d, book: Path, title: str, x0: float, y: float, fg: int) -> None:
+    def _draw_status(self, d, book: Path, x0: float, x1: float, y: float, fg: int, rtl: bool) -> None:
         """New badge, progress bar with percent, or Finished mark."""
-        ctx, small, w = self.ctx, self.ctx.small, self.ctx.width
+        ctx, small = self.ctx, self.ctx.small
         status = ctx.state.status(str(book))
         if status == "reading":
             progress = ctx.state.get_progress(str(book))
-            draw_progress(d, x0, w - PAD - 36, y, 4, progress, fill=fg, rtl=text_is_rtl(title))
-            d.text((w - PAD, y + 2), f"{round(progress * 100)}%", font=small.get(), fill=fg, anchor="rm")
+            label = f"{round(progress * 100)}%"
+            if rtl:   # percent on the left, bar fills from the right
+                d.text((x0, y + 2), label, font=small.get(), fill=fg, anchor="lm")
+                draw_progress(d, x0 + 36, x1, y, 4, progress, fill=fg, rtl=True)
+            else:
+                draw_progress(d, x0, x1 - 36, y, 4, progress, fill=fg)
+                d.text((x1, y + 2), label, font=small.get(), fill=fg, anchor="rm")
         elif status == "finished":
-            x = x0 + draw_icon(d, "check_circle", x0, y + 2, 16, fill=fg) + 4
+            text_w = small.width("Finished", Style.BOLD)
+            x = x1 - (20 + text_w) if rtl else x0
+            x += draw_icon(d, "check_circle", x, y + 2, 16, fill=fg) + 4
             d.text((x, y + 2), "Finished", font=small.get(Style.BOLD), fill=fg, anchor="lm")
         else:
             label_w = small.width("NEW", Style.BOLD)
-            d.rounded_rectangle((x0, y - 6, x0 + label_w + 10, y + 10), radius=3, outline=fg)
-            d.text((x0 + 5, y + 2), "NEW", font=small.get(Style.BOLD), fill=fg, anchor="lm")
+            left = x1 - (label_w + 10) if rtl else x0
+            d.rounded_rectangle((left, y - 6, left + label_w + 10, y + 10), radius=3, outline=fg)
+            d.text((left + 5, y + 2), "NEW", font=small.get(Style.BOLD), fill=fg, anchor="lm")
 
     def _draw_row(self, img, d, i, y0, height, fg, selected) -> None:
-        ui, small, w = self.ctx.ui_fonts, self.ctx.small, self.ctx.width
+        ui, small = self.ctx.ui_fonts, self.ctx.small
         title, author = self.meta[i]
-        self._paste_cover(img, d, i, THUMB_SIZE, PAD, y0, height, selected)
-        tx0 = PAD + THUMB_SIZE[0] + 12
-        draw_text(d, ui, title, tx0, w - PAD, y0 + 16, fill=fg)
-        draw_text(d, small, author, tx0, w - PAD, y0 + 38, fill=fg)
-        self._draw_status(d, self.books[i], title, tx0, y0 + height - 18, fg)
+        rtl = text_is_rtl(title)
+        align = "right" if rtl else "left"
+        cover_x, x0, x1 = self._columns(THUMB_SIZE[0], rtl)
+        self._paste_cover(img, d, i, THUMB_SIZE, cover_x, y0, height, selected)
+        lines = wrap_text(ui, title, x1 - x0, 2)  # long titles take two lines, then "..."
+        if len(lines) == 1:
+            draw_text(d, ui, lines[0], x0, x1, y0 + 16, fill=fg, align=align)
+            draw_text(d, small, author, x0, x1, y0 + 38, fill=fg, align=align)
+            status_y = y0 + height - 18
+        else:
+            # two title lines leave no room for the author: the title matters more
+            for n, line in enumerate(lines):
+                draw_text(d, ui, line, x0, x1, y0 + 15 + n * 24, fill=fg, align=align)
+            status_y = y0 + height - 14
+        self._draw_status(d, self.books[i], x0, x1, status_y, fg, rtl)
 
     def _draw_card(self, img, d, i, y0, height, fg, selected) -> None:
         """Larger cover, "Continue reading", title, chapter and progress."""
-        ui, small, w, state = self.ctx.ui_fonts, self.ctx.small, self.ctx.width, self.ctx.state
+        ui, small, state = self.ctx.ui_fonts, self.ctx.small, self.ctx.state
         title, _ = self.meta[i]
-        self._paste_cover(img, d, i, CARD_THUMB, PAD, y0, height, selected)
-        tx0 = PAD + CARD_THUMB[0] + 12
-        x = tx0 + draw_icon(d, "play_arrow", tx0 - 2, y0 + 11, 16, fill=fg) + 2
-        d.text((x, y0 + 11), "CONTINUE READING", font=small.get(Style.BOLD), fill=fg, anchor="lm")
-        lines = wrap_text(ui, title, w - PAD - tx0, 2)
+        rtl = text_is_rtl(title)
+        align = "right" if rtl else "left"
+        cover_x, x0, x1 = self._columns(CARD_THUMB[0], rtl)
+        self._paste_cover(img, d, i, CARD_THUMB, cover_x, y0, height, selected)
+        label = "CONTINUE READING"
+        label_w = small.width(label, Style.BOLD)
+        lx = x1 - (label_w + 18) if rtl else x0 - 2
+        draw_icon(d, "play_arrow", lx, y0 + 11, 16, fill=fg)
+        d.text((lx + 18, y0 + 11), label, font=small.get(Style.BOLD), fill=fg, anchor="lm")
+        lines = wrap_text(ui, title, x1 - x0, 2)
         for n, line in enumerate(lines):
-            draw_text(d, ui, line, tx0, w - PAD, y0 + 31 + n * 24, fill=fg)
+            draw_text(d, ui, line, x0, x1, y0 + 31 + n * 24, fill=fg, align=align)
         chapter = state.get_chapter(str(self.books[i]))
         if chapter:
-            draw_text(d, small, chapter, tx0, w - PAD, y0 + 31 + len(lines) * 24 + 4, fill=fg)
-        self._draw_status(d, self.books[i], title, tx0, y0 + height - 12, fg)
+            draw_text(d, small, chapter, x0, x1, y0 + 31 + len(lines) * 24 + 4, fill=fg, align=align)
+        self._draw_status(d, self.books[i], x0, x1, y0 + height - 12, fg, rtl)
 
     def handle(self, button: Button) -> Screen | None:
         if not self.books:
