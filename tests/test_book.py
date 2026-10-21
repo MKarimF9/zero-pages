@@ -31,9 +31,9 @@ def open_book(path, position=(0, 0)):
 
 def test_only_current_section_is_laid_out(tmp_path):
     book = open_book(make_book(tmp_path, {"a": "<p>one</p>", "b": "<p>two</p>", "c": "<p>three</p>"}))
-    assert set(book._cache) == {0}
+    assert set(book._cache) == {(0, 0)}
     book.next()
-    assert set(book._cache) == {0, 1}
+    assert set(book._cache) == {(0, 0), (1, 0)}
 
 
 def test_walk_forward_then_back_visits_every_page(tmp_path):

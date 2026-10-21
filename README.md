@@ -106,6 +106,10 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 
 The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a full refresh. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
 
+## Long chapters
+
+Books are laid out lazily: only the part you are reading, plus its neighbours, is in memory. A chapter file bigger than about 60 KB is cut into chunks of about 40 KB at paragraph ends (`CHUNK_BYTES` in `ereader/book.py`), so a huge single-chapter book opens at once and uses a few MB, not tens. Measured on a Mac with a synthetic 2 MB chapter: first page in 0.6 s (was 30 s), Python memory 5 MB (was 55 MB). Pi Zero numbers will differ; time it with the `[reader] section ... pages in ...s` lines the app prints.
+
 ## Fonts
 
 Bundled in `assets/fonts`, all under the SIL Open Font License (license texts are next to them):
@@ -138,7 +142,6 @@ Almost every test fails at first with `NotImplementedError`. That's expected: ea
 
 Stretch goals:
 - Dynamic-programming line breaking (`break_lines_dp`), compared against greedy
-- Lazy layout, one chapter at a time. Time it with `time.perf_counter()` first.
 - Real images in pages
 - Turn off Wi-Fi while reading; measure the power draw before and after
 - A Wi-Fi upload page for adding books

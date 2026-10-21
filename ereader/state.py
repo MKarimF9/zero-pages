@@ -21,7 +21,7 @@ FINISHED_AT = 0.98  # progress at which a book counts as finished
 class ReadingState:
     def __init__(self, path: str | Path = DEFAULT_PATH):
         self.path = Path(path).expanduser()
-        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "opened": {}, "settings": {}, "last_book": None}
+        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "chunks": {}, "opened": {}, "settings": {}, "last_book": None}
         try:
             self._data.update(json.loads(self.path.read_text()))
         except (FileNotFoundError, json.JSONDecodeError):
@@ -40,9 +40,15 @@ class ReadingState:
         section, page = self._data["positions"].get(book, (0, 0))
         return int(section), int(page)
 
+    def get_chunk(self, book: str) -> int:
+        """Which chunk of the saved section you were in (0 for most sections)."""
+        return int(self._data["chunks"].get(book, 0))
+
     def set_position(self, book: str, section: int, page: int, progress: float = 0.0,
-                     chapter: str = "") -> None:
+                     chapter: str = "", chunk: int = 0) -> None:
+        """page counts within the chunk (a long section is read in chunks)."""
         self._data["positions"][book] = [section, page]
+        self._data["chunks"][book] = chunk
         self._data["chapters"][book] = chapter
         self._data["opened"][book] = time.time()
         self._data["progress"][book] = round(progress, 4)
