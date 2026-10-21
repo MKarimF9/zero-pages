@@ -108,6 +108,10 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 
 The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a full refresh. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
 
+## Pictures in books
+
+PNG, JPEG, GIF, BMP and WebP pictures are shown, shrunk to fit the page and centered (a picture too tall for the rest of a page moves to the next one). Photos are dithered to black and white; diagrams and scanned pages are thresholded so lines stay crisp; transparent areas become white. A picture is decoded once and cached in `~/.pi-ereader/images`, so turning back to a page is quick. Pictures that can't be shown (SVG, missing files, damaged files) appear as a labelled box with the alt text. A picture is always on its own line: small pictures inside a line of text, such as a symbol drawn as an image, are not placed inline.
+
 ## Adding books over Wi-Fi
 
 Hold select on the library (keyboard: `m`), choose **Add books over Wi-Fi**. The screen shows an address like `http://192.168.1.50:8080` and a 4-digit PIN. Open the address on your phone or computer (same Wi-Fi), type the PIN, then pick or drag in `.epub` files. Press select on the reader when you're done: the upload server runs only while that screen is open, so nothing is listening on your network the rest of the time.
@@ -152,5 +156,4 @@ Almost every test fails at first with `NotImplementedError`. That's expected: ea
 
 Stretch goals:
 - Dynamic-programming line breaking (`break_lines_dp`), compared against greedy
-- Real images in pages
 - Turn off Wi-Fi while reading; measure the power draw before and after

@@ -61,6 +61,12 @@ class Epub:
         self._parse_opf()
         return self
 
+    def open_file(self, href: str):
+        """A file inside the EPUB as a stream (so an image's size can be read
+        from its header without loading the whole file)."""
+        assert self._zip, "call open() first"
+        return self._zip.open(href)
+
     def section_size(self, index: int) -> int:
         """Uncompressed size in bytes of spine item `index` (0 if missing).
         Used to estimate reading progress without laying out the whole book."""

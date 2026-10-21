@@ -467,7 +467,8 @@ def draw_status_bar(ctx: AppContext, d: ImageDraw.ImageDraw, st: Status) -> None
         draw_text(d, small, st.chapter, left, right - info_w - 12, base_y, align="left", baseline=True)
 
 
-def draw_page(ctx: AppContext, page: Page, status: Status) -> Image.Image:
+def draw_page(ctx: AppContext, page: Page, status: Status, load_image=None) -> Image.Image:
+    """load_image(src, width, height) -> 1-bit picture or None (LazyBook.image)."""
     img = blank(ctx)
     d = ImageDraw.Draw(img)
     base = ctx.fonts.baseline
@@ -476,9 +477,13 @@ def draw_page(ctx: AppContext, page: Page, status: Status) -> Image.Image:
             d.text((el.x, el.y + base), el.word.text, font=ctx.fonts.get(el.word.style, el.word.text),
                    fill=BLACK, anchor="ls")  # same baseline for Arabic and Latin words
         elif isinstance(el, PlacedImage):
-            # TODO (stretch): load the image from the zip, convert("1"), paste it here
-            d.rectangle((el.x, el.y, el.x + el.width, el.y + el.height), outline=BLACK)
-            d.text((el.x + 8, el.y + 8), "[image]", font=ctx.ui_fonts.get(), fill=BLACK)
+            picture = load_image(el.src, el.width, el.height) if load_image else None
+            if picture is not None:
+                img.paste(picture, (el.x, el.y))
+            else:  # missing or unsupported (SVG...): a box with the alt text
+                d.rectangle((el.x, el.y, el.x + el.width - 1, el.y + el.height - 1), outline=BLACK)
+                draw_text(d, ctx.small, el.alt or "[image]", el.x + 8, el.x + el.width - 8,
+                          el.y + el.height / 2, align="center")
     draw_status_bar(ctx, d, status)
     return img
 
@@ -496,7 +501,7 @@ class ReaderScreen(Screen):
             # the status bar owns the bottom STATUS_BAR_HEIGHT pixels
             self.book = LazyBook(path, ctx.fonts, ctx.width, ctx.height - STATUS_BAR_HEIGHT,
                                  position=ctx.state.get_position(str(path)), bottom_margin=6,
-                                 chunk=ctx.state.get_chunk(str(path)))
+                                 chunk=ctx.state.get_chunk(str(path)), cache_dir=ctx.state.path.parent)
         except NotImplementedError as e:
             self.error = str(e)  # tells you which function to write next
         except Exception as e:
@@ -542,7 +547,7 @@ class ReaderScreen(Screen):
         book = self.book
         status = Status(chapter=book.chapter_title or self.path.stem, page=book.page + 1,
                         pages=len(book.pages), progress=book.progress, rtl=book.rtl)
-        return draw_page(self.ctx, book.current, status)
+        return draw_page(self.ctx, book.current, status, book.image)
 
     def handle(self, button: Button) -> Screen | None:
         if self.error or not self.book or self.book.empty:

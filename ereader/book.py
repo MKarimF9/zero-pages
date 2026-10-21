@@ -18,11 +18,18 @@ page within the unit.
 """
 from __future__ import annotations
 
+import posixpath
 import re
 import time
 from bisect import bisect_right
+from collections import OrderedDict
 from pathlib import Path
+from urllib.parse import unquote
 
+from PIL import Image
+
+from . import images
+from .blocks import ImageBlock
 from .epub import Epub
 from .fonts import Fonts
 from .html_parser import parse_blocks
@@ -69,11 +76,14 @@ def split_html(data: bytes, size: int) -> list[tuple[int, int]]:
 class LazyBook:
     def __init__(self, path: str | Path, fonts: Fonts, width: int, height: int,
                  position: tuple[int, int] = (0, 0), bottom_margin: int | None = None,
-                 chunk: int = 0, chunk_bytes: int | None = None):
+                 chunk: int = 0, chunk_bytes: int | None = None, cache_dir: Path | None = None):
         self.epub = Epub(path).open()
         self.fonts, self.width, self.height = fonts, width, height
         self.bottom_margin = bottom_margin
         self.chunk_bytes = chunk_bytes or CHUNK_BYTES
+        self.cache_dir = cache_dir  # where drawn pictures are cached (None: not cached)
+        self._image_sizes: dict[str, tuple[int, int] | None] = {}
+        self._image_cache: OrderedDict[tuple, Image.Image | None] = OrderedDict()  # last few drawn pictures
         self.rtl = self.epub.rtl
         sizes = [self.epub.section_size(i) for i in range(len(self.epub.spine))]
         self._section_start = [sum(sizes[:i]) for i in range(len(sizes))]  # bytes before each section
@@ -183,6 +193,7 @@ class LazyBook:
     def close(self) -> None:
         self.epub.close()
         self._cache.clear()
+        self._image_cache.clear()
         self._slot = None
 
     # ------------------------------------------------------------ internals
@@ -258,12 +269,42 @@ class LazyBook:
             else:
                 start, end = plan[chunk]
                 html = data[start:end].decode("utf-8", errors="replace")
-                self._cache[key] = paginate(parse_blocks(html), self.fonts, self.width,
+                blocks = parse_blocks(html)
+                self._find_images(section, blocks)
+                self._cache[key] = paginate(blocks, self.fonts, self.width,
                                             self.height, bottom_margin=self.bottom_margin)
             part = f" part {chunk + 1}/{len(plan)}" if len(plan) > 1 else ""
             print(f"[reader] section {section + 1}/{self.section_count}{part}: "
                   f"{len(self._cache[key])} pages in {time.perf_counter() - t0:.2f}s", flush=True)
         return self._cache[key]
+
+    def _find_images(self, section: int, blocks: list) -> None:
+        """Turn each picture's src into a full path inside the EPUB and learn its
+        size, so layout can reserve the right space. Pictures that can't be
+        found or drawn keep size None and show as a labelled box."""
+        base = posixpath.dirname(self.epub.spine[section])
+        for block in blocks:
+            if isinstance(block, ImageBlock):
+                src = block.src.split("#")[0].split("?")[0]
+                if src.startswith("data:") or not src:
+                    block.size = None
+                    continue
+                block.src = posixpath.normpath(posixpath.join(base, unquote(src)))
+                if block.src not in self._image_sizes:
+                    self._image_sizes[block.src] = images.natural_size(self.epub, block.src)
+                block.size = self._image_sizes[block.src]
+
+    def image(self, src: str, width: int, height: int) -> Image.Image | None:
+        """A picture drawn at width x height as a 1-bit image (None if it can't be);
+        the last few are kept in memory so turning back is instant."""
+        key = (src, width, height)
+        if key not in self._image_cache:
+            self._image_cache[key] = images.render(self.epub, src, (width, height), self.cache_dir)
+            while len(self._image_cache) > 6:
+                self._image_cache.popitem(last=False)
+        else:
+            self._image_cache.move_to_end(key)
+        return self._image_cache[key]
 
     def _trim(self) -> None:
         """Keep the current unit, the chunks next to it, and the edge chunk of

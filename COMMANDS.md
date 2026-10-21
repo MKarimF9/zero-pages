@@ -90,8 +90,8 @@ python3 main.py --display png --controls gpio --books ~/books --width 400 --heig
 
 Your place, font and settings are saved. Reset everything on the Pi:
 ```bash
-ls ~/.pi-ereader          # state.json, library.json, covers/
-rm -r ~/.pi-ereader       # forget places, settings and cached covers (books are not touched)
+ls ~/.pi-ereader          # state.json, library.json, covers/, images/
+rm -r ~/.pi-ereader       # forget places, settings and cached covers and pictures (books are not touched)
 ```
 
 ---
@@ -264,7 +264,7 @@ git log --oneline --graph | head -20     # history
 git branch -a                            # all branches
 gh repo view --web                       # open the repo in your browser
 ```
-Branches so far: `feature/open-last-book`, `feature/metadata-cache`, `feature/covers`, `feature/reading-status`, `feature/wrapped-titles-rtl-rows`, `feature/library-sort-filter`, `feature/sleep-screen`, `feature/chunked-layout`, `feature/arrow-keys`, `feature/wifi-upload`, `docs/commands-cheatsheet`.
+Branches so far: `feature/open-last-book`, `feature/metadata-cache`, `feature/covers`, `feature/reading-status`, `feature/wrapped-titles-rtl-rows`, `feature/library-sort-filter`, `feature/sleep-screen`, `feature/chunked-layout`, `feature/arrow-keys`, `feature/wifi-upload`, `docs/commands-cheatsheet`, `feature/book-images`.
 
 The Pi has a **read-only** deploy key, so it can `git pull` but never push.
 

@@ -57,9 +57,10 @@ class BlockParser(HTMLParser):
             self._italic_depth += 1
         elif tag == "img":
             self._finish_block()
-            src = dict(attrs).get("src")
+            attributes = dict(attrs)
+            src = attributes.get("src")
             if src:
-                self.blocks.append(ImageBlock(src))
+                self.blocks.append(ImageBlock(src, alt=(attributes.get("alt") or "").strip()))
         elif tag == "br":
             self._finish_block()
 

@@ -36,7 +36,9 @@ class TextBlock:
 
 @dataclass
 class ImageBlock:
-    src: str  # path of the image inside the EPUB zip
+    src: str                                # as written in the HTML; made a full zip path by LazyBook
+    alt: str = ""
+    size: tuple[int, int] | None = None     # natural pixel size, once the image has been found
 
 
 Block = TextBlock | ImageBlock
