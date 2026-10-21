@@ -24,6 +24,7 @@ from .blocks import Style
 from .book import LazyBook
 from .controls import Button
 from .fonts import FAMILIES, Fonts
+from .covers import THUMB_SIZE, cached_cover
 from .layout import MARGIN, text_is_rtl
 from .library import BookIndex
 from .page import Page, PlacedImage, PlacedWord
@@ -101,10 +102,11 @@ class LibraryScreen(Screen):
         self.meta = [(b.title, b.author) for b in infos]  # (title, author)
         self.cursor = 0
         self.full_refresh = True
+        self._covers: dict[int, Image.Image] = {}  # row index -> thumbnail, made when first shown
 
     @property
     def _row_h(self) -> int:
-        return self.ctx.ui_fonts.line_height + self.ctx.small.line_height + 8
+        return THUMB_SIZE[1] + 8   # the cover sets the row height
 
     @property
     def _rows_per_page(self) -> int:
@@ -131,13 +133,20 @@ class LibraryScreen(Screen):
             if selected:  # inverted bar = the e-paper version of a highlight
                 d.rectangle((0, y0, w, y0 + row_h - 1), fill=BLACK)
             title, author = self.meta[i]
-            draw_text(d, ui, title, PAD, w - PAD, y0 + ui.line_height / 2 + 1, fill=fg)
-            draw_text(d, small, author, PAD, w - PAD, y0 + ui.line_height + small.line_height / 2 - 4,
-                      fill=fg)
+            if i not in self._covers:
+                self._covers[i] = cached_cover(ctx.state.path.parent, self.books[i], title)
+            cover = self._covers[i]
+            cy = y0 + (row_h - cover.height) // 2
+            if selected:  # a white mat keeps the cover legible on the inverted bar
+                d.rectangle((PAD - 2, cy - 2, PAD + cover.width + 1, cy + cover.height + 1), fill=WHITE)
+            img.paste(cover, (PAD, cy))
+            tx0 = PAD + cover.width + 12
+            draw_text(d, ui, title, tx0, w - PAD, y0 + 16, fill=fg)
+            draw_text(d, small, author, tx0, w - PAD, y0 + 38, fill=fg)
             progress = ctx.state.get_progress(str(self.books[i]))
             if progress > 0.005:
-                bar_y = y0 + row_h - 9
-                draw_progress(d, PAD, w - PAD - 36, bar_y, 4, progress, fill=fg, rtl=text_is_rtl(title))
+                bar_y = y0 + row_h - 18
+                draw_progress(d, tx0, w - PAD - 36, bar_y, 4, progress, fill=fg, rtl=text_is_rtl(title))
                 d.text((w - PAD, bar_y + 2), f"{round(progress * 100)}%", font=small.get(),
                        fill=fg, anchor="rm")
         return img

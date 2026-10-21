@@ -31,6 +31,7 @@ NS = {
     "dc": "http://purl.org/dc/elements/1.1/",
     "ncx": "http://www.daisy.org/z3986/2005/ncx/",
 }
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
 XHTML = "{http://www.w3.org/1999/xhtml}"
 EPUB_TYPE = "{http://www.idpf.org/2007/ops}type"
 
@@ -50,6 +51,7 @@ class Epub:
         self.spine: list[str] = []          # hrefs, in reading order
         self.toc: list[TocEntry] = []       # table of contents, in spine order
         self.rtl = False                    # page-progression-direction="rtl"
+        self.cover: str | None = None       # full zip path of the cover image, if any
         self._zip: zipfile.ZipFile | None = None
         self._opf_path: str = ""
 
@@ -121,10 +123,20 @@ class Epub:
 
         self.manifest = {}
         nav_href = None  # EPUB 3 navigation document
+        cover = None     # EPUB 3: the item with properties="cover-image"
         for item in root.findall("opf:manifest/opf:item", NS):
             self.manifest[item.get("id")] = self._resolve(item.get("href"))
-            if "nav" in (item.get("properties") or "").split():
+            properties = (item.get("properties") or "").split()
+            if "nav" in properties:
                 nav_href = self.manifest[item.get("id")]
+            if "cover-image" in properties:
+                cover = self.manifest[item.get("id")]
+        if cover is None:  # EPUB 2: <meta name="cover" content="<manifest id>"/>
+            for meta in root.findall("opf:metadata/opf:meta", NS):
+                if meta.get("name") == "cover":
+                    cover = self.manifest.get(meta.get("content"))
+        if cover and cover.lower().endswith(IMAGE_EXTENSIONS):
+            self.cover = cover
 
         self.spine = []
         for ref in root.findall("opf:spine/opf:itemref", NS):

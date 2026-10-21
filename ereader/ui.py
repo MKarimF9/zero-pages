@@ -76,6 +76,26 @@ def fit_text(fonts: Fonts, text: str, style: Style, max_width: float, ellipsis: 
     return text[:lo].rstrip() + ellipsis
 
 
+def wrap_text(fonts: Fonts, text: str, max_width: float, max_lines: int,
+              style: Style = Style.NORMAL) -> list[str]:
+    """Greedy word wrap into at most max_lines lines; the last line is cut
+    with an ellipsis if the text doesn't fit. Lines are in reading order."""
+    words, lines, line = text.split(), [], ""
+    for i, word in enumerate(words):
+        trial = f"{line} {word}".strip()
+        if fonts.width(trial, style) <= max_width or not line:
+            line = trial
+        else:
+            lines.append(line)
+            line = word
+        if len(lines) == max_lines - 1:  # the last allowed line takes everything left
+            line = " ".join([line] + words[i + 1:]) if i + 1 < len(words) else line
+            break
+    if line:
+        lines.append(line)
+    return [fit_text(fonts, l, style, max_width) for l in lines[:max_lines]]
+
+
 def draw_text(d: ImageDraw.ImageDraw, fonts: Fonts, text: str, x0: float, x1: float, y: float,
               style: Style = Style.NORMAL, fill: int = BLACK, align: str = "auto",
               baseline: bool = False) -> None:
