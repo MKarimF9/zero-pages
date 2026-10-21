@@ -177,12 +177,12 @@ def test_drawn_pictures_are_cached_on_disk_and_in_memory(tmp_path):
     cache = tmp_path / "cache"
     book, pic = make_book_with_picture(tmp_path, photo(200, 150), cache_dir=cache)
     first = book.image(pic.src, 100, 75)
-    [file] = list((cache / "images").glob("*.png"))
+    [file] = list((cache / "images").rglob("*.png"))
     stamp = file.stat().st_mtime_ns
     book._image_cache.clear()                                     # a new session reads the disk copy
     assert book.image(pic.src, 100, 75).tobytes() == first.tobytes() and file.stat().st_mtime_ns == stamp
     book.image(pic.src, 50, 40)                                   # another size is another cache entry
-    assert len(list((cache / "images").glob("*.png"))) == 2
+    assert len(list((cache / "images").rglob("*.png"))) == 2
 
 
 def test_memory_keeps_only_a_few_pictures(tmp_path):

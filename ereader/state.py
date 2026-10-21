@@ -59,6 +59,14 @@ class ReadingState:
         """Fraction of the book read (0..1), for the library's progress bars."""
         return float(self._data["progress"].get(book, 0.0))
 
+    def forget(self, book: str) -> None:
+        """Remove everything remembered about a book (its place, progress, chapter...)."""
+        for table in ("pages", "positions", "progress", "chapters", "chunks", "opened"):
+            self._data.get(table, {}).pop(book, None)
+        if self._data.get("last_book") == book:
+            self._data["last_book"] = None
+        self.save()
+
     def get_opened(self, book: str) -> float:
         """When the book was last read (a timestamp); 0 if never."""
         return float(self._data["opened"].get(book, 0.0))

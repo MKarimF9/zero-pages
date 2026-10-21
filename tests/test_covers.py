@@ -40,7 +40,7 @@ def test_cache_is_written_once_then_read(tmp_path):
     path = make_epub(tmp_path / "c.epub", cover="epub3")
     cache = tmp_path / "cache"
     first = cached_cover(cache, path, "T")
-    [file] = list((cache / "covers").glob("*.png"))
+    [file] = list((cache / "covers").rglob("*.png"))
     stamp = file.stat().st_mtime_ns
     second = cached_cover(cache, path, "T")
     assert file.stat().st_mtime_ns == stamp and first.tobytes() == second.tobytes()

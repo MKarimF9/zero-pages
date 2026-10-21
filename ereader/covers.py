@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps
 
 from .blocks import Style
+from .cache import book_cache_dir
 from .epub import Epub
 from .fonts import Fonts
 from .ui import BLACK, WHITE, draw_icon, wrap_text
@@ -77,7 +78,7 @@ def make_cover(path: Path, title: str, size: tuple[int, int] = THUMB_SIZE) -> Im
 
 def cached_cover(cache_dir: Path, path: Path, title: str, size: tuple[int, int] = THUMB_SIZE) -> Image.Image:
     """The thumbnail for a book, generated on first use and then read from disk."""
-    file = cache_dir / "covers" / _cache_name(path, size)
+    file = book_cache_dir(cache_dir, "covers", path) / _cache_name(path, size)
     try:
         return Image.open(file).convert("1")
     except (FileNotFoundError, OSError):
