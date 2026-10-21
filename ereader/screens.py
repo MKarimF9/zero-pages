@@ -714,7 +714,7 @@ class TocScreen(Screen):
         if self.cursor == 0:
             self.menu.full_refresh = True
             return self.menu
-        self.reader.book.goto(self.entries[self.cursor - 1].section)
+        self.reader.book.goto_entry(self.cursor - 1)
         self.reader.unsaved_turns += 1
         self.reader._save_progress()
         return self.reader.resume()

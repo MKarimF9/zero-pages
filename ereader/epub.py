@@ -39,7 +39,8 @@ EPUB_TYPE = "{http://www.idpf.org/2007/ops}type"
 @dataclass
 class TocEntry:
     title: str
-    section: int  # index into Epub.spine
+    section: int       # index into Epub.spine
+    fragment: str = "" # the #anchor inside that file, if any (a chapter in the middle of a long file)
 
 
 class Epub:
@@ -179,11 +180,11 @@ class Epub:
         index = {href: i for i, href in enumerate(self.spine)}
         entries = []
         for title, src, base in raw:
-            path = posixpath.normpath(posixpath.join(posixpath.dirname(base),
-                                                     unquote(src.split("#")[0])))
+            target, _, fragment = src.partition("#")
+            path = posixpath.normpath(posixpath.join(posixpath.dirname(base), unquote(target)))
             title = " ".join(title.split())
             if title and path in index:
-                entries.append(TocEntry(title, index[path]))
+                entries.append(TocEntry(title, index[path], unquote(fragment)))
         return sorted(entries, key=lambda e: e.section)
 
     def _resolve(self, href: str) -> str:

@@ -21,8 +21,8 @@ from __future__ import annotations
 import posixpath
 import re
 import time
-from bisect import bisect_right
-from collections import OrderedDict
+from bisect import bisect_left, bisect_right
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -40,23 +40,66 @@ CHUNK_BYTES = 40_000   # target size of a chunk of a long section (about 100 pag
 _BLOCK_END = re.compile(rb"</(?:p|div|li|h[1-6]|blockquote|section|tr|table)\s*>", re.I)
 
 
-def split_html(data: bytes, size: int) -> list[tuple[int, int]]:
-    """Cut `data` into [(start, end)] chunks of about `size` bytes.
+MIN_CHUNK = 600   # a chapter cut closer than this to the previous cut shares its chunk
+_ANCHOR_TAG = re.compile(rb"<(a|span)\b[^>]*?(/>|>\s*(</\1\s*>)?)", re.I)   # an empty <a id=...></a> or <span id=.../>
+_BLOCK_CLOSE = re.compile(rb"</(div|h[1-6]|p)\s*>\s*$", re.I)
+_HEADINGISH = re.compile(rb"title|heading|chapter|head", re.I)
 
-    Cuts go just after a block's closing tag, so no paragraph is split. If a
-    stretch has no block end, it falls back to after any tag (a <br/> is a
-    paragraph break anyway), and with no tags at all it leaves the text whole.
-    Sections up to 1.5x `size` are not split. UTF-8 is safe to cut at tags,
-    since multi-byte characters never contain the ASCII byte for ">".
-    """
-    n = len(data)
-    if n <= size * 3 // 2:
-        return [(0, n)]
-    cuts, pos = [0], 0
-    while n - pos > size * 3 // 2:
+
+def find_anchor(data: bytes, fragment: str) -> int | None:
+    """Byte offset of the element carrying id="fragment" (or name="fragment"): the start of its tag."""
+    pattern = re.compile(rb"""\b(?:id|name)\s*=\s*(["'])""" + re.escape(fragment.encode()) + rb"\1")
+    match = pattern.search(data)
+    return data.rfind(b"<", 0, match.start()) if match else None
+
+
+def heading_start(data: bytes, pos: int) -> int:
+    """Where a chapter really begins. Many books put an empty anchor *after* the
+    chapter's title (`<div class="chapter-title">..</div><a id="ch2"></a>`); a jump
+    to the anchor would then skip the title. If the anchor is an empty tag right
+    after a short heading-looking block, start at that block instead."""
+    if not _ANCHOR_TAG.match(data, pos):
+        return pos
+    base = max(0, pos - 3000)
+    before = data[base:pos]
+    closing = _BLOCK_CLOSE.search(before)
+    if not closing:
+        return pos
+    name = closing.group(1).lower()
+    depth, start = 0, None
+    for m in reversed(list(re.finditer(rb"</?" + name + rb"\b[^>]*>", before[:closing.end()], re.I))):
+        depth += 1 if m.group(0).startswith(b"</") else -1
+        if depth == 0:
+            start = m.start()
+            break
+    if start is None:
+        return pos
+    block = before[start:closing.end()]
+    opening = re.match(rb"<[^>]*>", block).group(0)
+    text = re.sub(rb"<[^>]+>", b"", block).strip()
+    heading_like = name.startswith(b"h") or _HEADINGISH.search(opening)
+    return base + start if heading_like and 0 < len(text) <= 300 else pos
+
+
+def _thin(cuts: list[int], gap: int) -> list[int]:
+    """Drop cuts that are within `gap` bytes of the previous kept cut (or of the start)."""
+    kept, last = [], 0
+    for c in cuts:
+        if c - last >= gap:
+            kept.append(c)
+            last = c
+    return kept
+
+
+def _split_range(data: bytes, start: int, end: int, size: int) -> list[tuple[int, int]]:
+    """Cut data[start:end] into chunks of about `size` bytes (see split_html)."""
+    if end - start <= size * 3 // 2:
+        return [(start, end)]
+    cuts, pos = [start], start
+    while end - pos > size * 3 // 2:
         target, limit = pos + size, pos + size * 2
-        block = _BLOCK_END.search(data, target)
-        tag = data.find(b">", target)
+        block = _BLOCK_END.search(data, target, end)
+        tag = data.find(b">", target, end)
         if block and block.end() <= limit:
             cut = block.end()
         elif tag != -1 and tag + 1 <= limit:
@@ -69,8 +112,26 @@ def split_html(data: bytes, size: int) -> list[tuple[int, int]]:
             break               # nothing to cut at: leave the rest whole
         cuts.append(cut)
         pos = cut
-    cuts.append(n)
+    cuts.append(end)
     return list(zip(cuts, cuts[1:]))
+
+
+def split_html(data: bytes, size: int, cuts: list[int] | tuple[int, ...] = ()) -> list[tuple[int, int]]:
+    """Cut `data` into [(start, end)] chunks of about `size` bytes.
+
+    `cuts` are places where a chunk must begin (the starts of chapters). Between
+    them, cuts go just after a block's closing tag, so no paragraph is split. If
+    a stretch has no block end, it falls back to after any tag (a <br/> is a
+    paragraph break anyway), and with no tags at all it leaves the text whole.
+    Stretches up to 1.5x `size` are not split. UTF-8 is safe to cut at tags,
+    since multi-byte characters never contain the ASCII byte for ">".
+    """
+    n = len(data)
+    bounds = [0] + sorted({c for c in cuts if 0 < c < n}) + [n]
+    chunks: list[tuple[int, int]] = []
+    for a, b in zip(bounds, bounds[1:]):
+        chunks.extend(_split_range(data, a, b, size))
+    return chunks
 
 
 class LazyBook:
@@ -89,6 +150,11 @@ class LazyBook:
         self._section_start = [sum(sizes[:i]) for i in range(len(sizes))]  # bytes before each section
         self._sizes, self._total = sizes, sum(sizes)
         self._toc_sections = [e.section for e in self.epub.toc]
+        self._toc_by_section: dict[int, list[int]] = defaultdict(list)  # section -> indexes into epub.toc
+        for i, entry in enumerate(self.epub.toc):
+            self._toc_by_section[entry.section].append(i)
+        self._entry_chunk: dict[int, int] = {}   # toc index -> chunk it starts in (filled when its section is planned)
+        self._entry_found: set[int] = set()      # toc indexes whose #anchor was really found in the file
         self._plans: dict[int, list[tuple[int, int]]] = {}   # section -> its chunks (byte ranges)
         self._cache: dict[tuple[int, int], list[Page]] = {}  # (section, chunk) -> laid-out pages
         self._slot: tuple[int, bytes] | None = None          # last small section read, to avoid re-reading
@@ -139,16 +205,41 @@ class LazyBook:
         in_section = (start + within * (end - start)) / max(1, plan[-1][1])
         return (self._section_start[self.section] + in_section * self._sizes[self.section]) / self._total
 
+    def _chapter_pos(self) -> int:
+        """Index into epub.toc of the chapter you are in, or -1 before the first one.
+        Chapters that start inside this section are compared by chunk, so a file
+        holding many chapters shows the right one."""
+        if not self.epub.toc:
+            return -1
+        here = self._toc_by_section.get(self.section, [])
+        if here:
+            self._plan(self.section)
+            # the entry starting latest at or before this chunk; among those in the same
+            # chunk, one whose anchor was found beats one that fell back to the file's start
+            ranked = [(self._entry_chunk.get(i, 0), i in self._entry_found, i) for i in here
+                      if self._entry_chunk.get(i, 0) <= self.chunk]
+            if ranked:
+                return max(ranked)[2]
+        return bisect_left(self._toc_sections, self.section) - 1   # the last chapter of an earlier section
+
     @property
     def chapter_title(self) -> str:
-        """Title of the table-of-contents entry at or before this section."""
-        i = bisect_right(self._toc_sections, self.section) - 1
+        """Title of the table-of-contents entry for where you are."""
+        i = self._chapter_pos()
         return self.epub.toc[i].title if i >= 0 else ""
 
     @property
     def chapter_index(self) -> int:
         """Index into epub.toc of the current chapter (0 if before the first)."""
-        return max(0, bisect_right(self._toc_sections, self.section) - 1)
+        return max(0, self._chapter_pos())
+
+    def goto_entry(self, index: int) -> None:
+        """Jump to the start of a table-of-contents entry, even if it is in the
+        middle of a long file."""
+        entry = self.epub.toc[index]
+        self._plan(entry.section)
+        self._seek(entry.section, 0, self._entry_chunk.get(index, 0))
+        self._trim()
 
     def goto(self, section: int) -> None:
         """Jump to the first page of a section."""
@@ -254,7 +345,23 @@ class LazyBook:
         """The chunks of a section as byte ranges; always at least one."""
         if section not in self._plans:
             data = self._read(section)
-            self._plans[section] = [(0, 0)] if data is None else split_html(data, self.chunk_bytes)
+            if data is None:
+                self._plans[section] = [(0, 0)]
+            else:
+                # chapters that start inside this file begin a chunk of their own
+                starts = {}
+                for i in self._toc_by_section.get(section, []):
+                    fragment = self.epub.toc[i].fragment
+                    pos = find_anchor(data, fragment) if fragment else None
+                    if pos is not None:
+                        starts[i] = heading_start(data, pos)
+                plan = split_html(data, self.chunk_bytes, _thin(sorted(set(starts.values())), MIN_CHUNK))
+                chunk_starts = [a for a, _ in plan]
+                for i in self._toc_by_section.get(section, []):   # a missing anchor means the file's start
+                    self._entry_chunk[i] = bisect_right(chunk_starts, starts.get(i, 0)) - 1
+                    if i in starts:
+                        self._entry_found.add(i)
+                self._plans[section] = plan
         return self._plans[section]
 
     def _unit(self, section: int, chunk: int) -> list[Page]:

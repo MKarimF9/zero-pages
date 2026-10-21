@@ -108,6 +108,10 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 
 The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a full refresh. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
 
+## Chapters inside one file
+
+Many EPUBs put several chapters in one long file and point to each with an `#anchor`. The reader follows those anchors: a chapter starts its own chunk (so choosing it in the contents lands exactly on it, with its title), and the status bar names the chapter you are really in. If the anchor sits just after the chapter's title, as in the Quran EPUBs, the title is included. A chapter whose anchor can't be found falls back to the start of its file.
+
 ## Pictures in books
 
 PNG, JPEG, GIF, BMP and WebP pictures are shown, shrunk to fit the page and centered (a picture too tall for the rest of a page moves to the next one). Photos are dithered to black and white; diagrams and scanned pages are thresholded so lines stay crisp; transparent areas become white. A picture is decoded once and cached in `~/.pi-ereader/images`, so turning back to a page is quick. Pictures that can't be shown (SVG, missing files, damaged files) appear as a labelled box with the alt text. A picture is always on its own line: small pictures inside a line of text, such as a symbol drawn as an image, are not placed inline.
