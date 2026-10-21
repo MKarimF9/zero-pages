@@ -112,6 +112,7 @@ class Fonts:
         self._fonts = {style: _load_latin(self.family, style, size) for style in STYLE_SUFFIX}
         self._arabic = _load_arabic(size)  # None: Arabic falls back to the Latin font
         self._widths: dict[tuple[Style, str], float] = {}
+        self._scaled: dict[int, "Fonts"] = {}
 
     def get(self, style: Style = Style.NORMAL, text: str = ""):
         """Font for `style`. Pass the text too and Arabic gets the Arabic font
@@ -140,6 +141,14 @@ class Fonts:
             return int(self._fonts[Style.NORMAL].getmetrics()[0])
         except AttributeError:  # Pillow's old bitmap fallback font
             return int(self.size * 0.8)
+
+    def scaled(self, size: int) -> "Fonts":
+        """The same family at another size (remembered; used to shrink a verse to fit a page)."""
+        if size == self.size:
+            return self
+        if size not in self._scaled:
+            self._scaled[size] = Fonts(size, self.family)
+        return self._scaled[size]
 
     @property
     def arabic_pad(self) -> int:

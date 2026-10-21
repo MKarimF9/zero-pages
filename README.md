@@ -120,6 +120,10 @@ On the contents screen, **hold select** to change how far up/down move: 1, 5, 10
 
 **Pin to top** in the reader menu keeps a book above all the others in the library (a pin icon marks it), whatever the sort order, with several pins in the order you pinned them. Pin the Quran, or whatever you open every day, and it never gets buried. The *Continue reading* card still goes to the book you last read: first if that book is pinned, otherwise right below the pinned ones.
 
+## Verses stay with their translation
+
+An Arabic paragraph followed by an English one (a verse and its translation, as in the Quran EPUBs) is kept on one page. If the pair doesn't fit in what is left of the page, it starts on the next page. If it is too tall for a whole page, the pair is shrunk together (2 px at a time, down to `MIN_VERSE_SIZE` = 14 in `ereader/layout.py`) until it fits, and gets a page of its own. Only a verse that is still too tall at that size, such as the long verse at 2:282, flows over pages as normal text. Other text keeps your chosen font size.
+
 ## Headings
 
 `<h1>`-`<h6>` are headings, and so are blocks the book marks with a title-like class (`chapter-title`, `subtitle`, `title`...), `role="heading"` or `epub:type="title"`: they are drawn bold and centered with extra space around them. A class-marked block longer than 40 words is treated as an ordinary paragraph.
