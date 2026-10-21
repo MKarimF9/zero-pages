@@ -115,3 +115,17 @@ def test_bottom_margin_gives_more_room():
     tall = paginate(blocks, FONTS, 800, 480, bottom_margin=0)
     normal = paginate(blocks, FONTS, 800, 480)
     assert len(rows(tall[0])) > len(rows(normal[0]))
+
+
+def test_arabic_blocks_get_extra_line_height():
+    from ereader.blocks import Style, TextBlock, Word
+    from ereader.fonts import Fonts
+    from ereader.layout import paginate
+    f = Fonts(22)
+    latin = TextBlock([Word("hello", Style.NORMAL)])
+    arabic = TextBlock([Word("بِسْمِ", Style.NORMAL)])
+    def second_y(block):
+        pages = paginate([block, block], f, 400, 300)
+        ys = sorted({e.y for e in pages[0].elements})
+        return ys[1] - ys[0]
+    assert second_y(arabic) > second_y(latin)

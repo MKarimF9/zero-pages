@@ -148,7 +148,7 @@ Books are laid out lazily: only the part you are reading, plus its neighbours, i
 
 Bundled in `assets/fonts`, all under the SIL Open Font License (license texts are next to them):
 - **Literata** (default), **Noto Serif** and **Charis SIL** for Latin text. Switch between them with the **Font** row in the reader menu; the choice is remembered.
-- **Noto Naskh Arabic** for all Arabic text, whichever Latin font is selected.
+- **Amiri Quran** for all Arabic text, whichever Latin font is selected. It draws the vowel marks and Quranic stop signs properly. It has no bold, so bold Arabic (headings) uses **Noto Naskh Arabic** Bold. Arabic is drawn 20% larger than the Latin text (`ARABIC_SCALE` in `ereader/fonts.py`) and its lines get extra height for the marks (`ARABIC_PAD`).
 
 Literata, Noto Serif and Noto Naskh Arabic are stored as small static files (about 60-140 KB each) built from Google Fonts' variable fonts by `tools/make_fonts.py`. Charis SIL is copied unchanged, because its license reserves the font name.
 
