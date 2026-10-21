@@ -14,12 +14,13 @@ import os
 from pathlib import Path
 
 DEFAULT_PATH = Path("~/.pi-ereader/state.json").expanduser()
+FINISHED_AT = 0.98  # progress at which a book counts as finished
 
 
 class ReadingState:
     def __init__(self, path: str | Path = DEFAULT_PATH):
         self.path = Path(path).expanduser()
-        self._data = {"pages": {}, "positions": {}, "progress": {}, "settings": {}, "last_book": None}
+        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "settings": {}, "last_book": None}
         try:
             self._data.update(json.loads(self.path.read_text()))
         except (FileNotFoundError, json.JSONDecodeError):
@@ -38,8 +39,10 @@ class ReadingState:
         section, page = self._data["positions"].get(book, (0, 0))
         return int(section), int(page)
 
-    def set_position(self, book: str, section: int, page: int, progress: float = 0.0) -> None:
+    def set_position(self, book: str, section: int, page: int, progress: float = 0.0,
+                     chapter: str = "") -> None:
         self._data["positions"][book] = [section, page]
+        self._data["chapters"][book] = chapter
         self._data["progress"][book] = round(progress, 4)
         self._data["last_book"] = book
         self.save()
@@ -47,6 +50,16 @@ class ReadingState:
     def get_progress(self, book: str) -> float:
         """Fraction of the book read (0..1), for the library's progress bars."""
         return float(self._data["progress"].get(book, 0.0))
+
+    def get_chapter(self, book: str) -> str:
+        """Title of the chapter you were last in (for the library's Continue card)."""
+        return self._data["chapters"].get(book, "")
+
+    def status(self, book: str) -> str:
+        """"new" (never opened), "reading" or "finished"."""
+        if book not in self._data["positions"]:
+            return "new"
+        return "finished" if self.get_progress(book) >= FINISHED_AT else "reading"
 
     def get_setting(self, key: str, default=None):
         return self._data["settings"].get(key, default)
