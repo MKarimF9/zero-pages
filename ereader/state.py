@@ -21,7 +21,7 @@ FINISHED_AT = 0.98  # progress at which a book counts as finished
 class ReadingState:
     def __init__(self, path: str | Path = DEFAULT_PATH):
         self.path = Path(path).expanduser()
-        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "chunks": {}, "opened": {}, "settings": {}, "last_book": None}
+        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "chunks": {}, "opened": {}, "pinned": [], "settings": {}, "last_book": None}
         try:
             self._data.update(json.loads(self.path.read_text()))
         except (FileNotFoundError, json.JSONDecodeError):
@@ -59,12 +59,29 @@ class ReadingState:
         """Fraction of the book read (0..1), for the library's progress bars."""
         return float(self._data["progress"].get(book, 0.0))
 
+    def get_pinned(self) -> list[str]:
+        """Pinned books, in the order they were pinned."""
+        return list(self._data.get("pinned", []))
+
+    def is_pinned(self, book: str) -> bool:
+        return book in self._data.get("pinned", [])
+
+    def set_pinned(self, book: str, pinned: bool) -> None:
+        books = self._data.setdefault("pinned", [])
+        if pinned and book not in books:
+            books.append(book)
+        elif not pinned and book in books:
+            books.remove(book)
+        self.save()
+
     def forget(self, book: str) -> None:
         """Remove everything remembered about a book (its place, progress, chapter...)."""
         for table in ("pages", "positions", "progress", "chapters", "chunks", "opened"):
             self._data.get(table, {}).pop(book, None)
         if self._data.get("last_book") == book:
             self._data["last_book"] = None
+        if book in self._data.get("pinned", []):
+            self._data["pinned"].remove(book)
         self.save()
 
     def get_opened(self, book: str) -> float:
