@@ -108,6 +108,10 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 
 The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a full refresh. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
 
+## Long contents lists
+
+On the contents screen, **hold select** to change how far up/down move: 1, 5, 10 or 25 rows at a time (the header shows `jump N`). With a big step the cursor stops at the first and last row before wrapping, so you can't skip past them. The Quran EPUB has 147 rows (30 juz and 114 surahs): jump 25 crosses it in about 6 presses, then drop back to 1 to fine-tune. The chapter you are in is marked with an arrow.
+
 ## Bookmarks
 
 *Bookmark this page* in the reader menu marks the page (a small bookmark appears in its top corner); the same row says *Remove bookmark* on a marked page. *Bookmarks* lists them in reading order with the chapter name and percent read: select goes there, **hold select** removes one. A bookmark remembers where in the chapter chunk the page is as a fraction, so it still lands on the right text after you change the font size. Deleting the book deletes its bookmarks.
