@@ -62,6 +62,7 @@ def main() -> None:
     try:
         while True:
             display.show(screen.render(), full_refresh=screen.full_refresh)
+            display.set_idle_image(screen.sleep_image)  # shown if the panel goes idle
             button = controls.wait()
             if button is Button.QUIT:
                 break

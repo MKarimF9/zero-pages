@@ -74,7 +74,9 @@ python3 main.py --books ~/books
 Keys: `w`/`k` = up, `s`/`j` = down, space/enter = select, `m` = hold select, `q` = quit.
 
 Using it (three buttons only). The app opens the book you were last reading; pass `--start library` to open the library instead.
-- **Library:** up/down pick a book, select opens it. Your current book is a larger *Continue reading* card on top. **Hold select** (keyboard: `m`) for options: sort by recent, title or author, and show all, reading, new or finished books.
+- **Library:** up/down pick a book, select opens it. Your current book is a larger *Continue reading* card on top. **Hold select** (keyboard: `m`) for options: sort by recent, title or author, show all, reading, new or finished books, and choose the sleep screen.
+- **Covers and status:** each book shows its cover (books without one get a generated cover with the title), and either a NEW badge, a progress bar with percent, or a Finished mark. Covers are shrunk and dithered once, then cached in `~/.pi-ereader/covers`.
+- **Sleep screen:** after 60 seconds idle the e-paper shows the current book's cover, then powers down (the image stays with no power). In the library options you can switch it to *Page* to leave the current page instead. In the PNG preview, quitting writes `preview/sleep.png` so you can see it.
 - **Reading:** down = next page, up = previous page, **select = menu**.
 - **Menu:** Resume, Table of contents, Font size (select cycles 18-32 and remembers it), Back to library.
 - **Status bar** under each page: progress bar, chapter title, page in chapter, percent read. Right-to-left books are mirrored.

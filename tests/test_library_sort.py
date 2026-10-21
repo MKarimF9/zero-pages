@@ -85,7 +85,7 @@ def test_options_cycle_persist_and_go_back(tmp_path):
         assert state.get_setting("library_sort") == expected
     opts.handle(B.DOWN)
     assert opts.handle(B.SELECT) is None and state.get_setting("library_filter") == "reading"
-    opts.handle(B.DOWN)
+    opts.cursor = 3   # Back to library (after Sort, Show and Sleep screen)
     back = opts.handle(B.SELECT)
     assert isinstance(back, LibraryScreen) and back.filter == "reading"
 

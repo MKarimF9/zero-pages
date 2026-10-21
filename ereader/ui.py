@@ -36,6 +36,7 @@ ICONS = {
     "arrow_back": "\ue5c4",
     "bookmark": "\ue8e7",
     "sort": "\ue164",
+    "bedtime": "\uf159",
     "filter_list": "\ue152",
     "tune": "\ue429",
     "check_circle": "\uf0be",

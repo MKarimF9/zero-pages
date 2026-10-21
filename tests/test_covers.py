@@ -63,3 +63,16 @@ def test_wrap_text():
     lines = wrap_text(f, "one two three four five six seven eight nine ten", 60, 3)
     assert len(lines) == 3 and all(f.width(l) <= 60 for l in lines) and lines[-1].endswith("...")
     assert wrap_text(f, "short", 60, 3) == ["short"]
+
+
+def test_cache_key_depends_on_version_and_size(tmp_path, monkeypatch=None):
+    from ereader import covers
+    path = make_epub(tmp_path / "c.epub")
+    a = covers._cache_name(path, (48, 64))
+    assert a != covers._cache_name(path, (210, 280))        # each size is cached separately
+    old = covers.COVER_VERSION
+    try:
+        covers.COVER_VERSION = old + 1
+        assert covers._cache_name(path, (48, 64)) != a       # a new version remakes the thumbnails
+    finally:
+        covers.COVER_VERSION = old
