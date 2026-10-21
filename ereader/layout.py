@@ -136,6 +136,13 @@ def _place_line(line: list[Word], fonts: Fonts, y: int, left: int, right: int,
     return placed
 
 
+def fit_size(natural: tuple[int, int], max_w: int, max_h: int) -> tuple[int, int]:
+    """Shrink (never enlarge) an image to fit in max_w x max_h, keeping its shape."""
+    w, h = natural
+    scale = min(max_w / w, max_h / h, 1.0)
+    return max(1, round(w * scale)), max(1, round(h * scale))
+
+
 def paginate(blocks: list[Block], fonts: Fonts, width: int, height: int,
              margin: int = MARGIN, bottom_margin: int | None = None) -> list[Page]:
     """Stack lines and images onto pages.
@@ -163,10 +170,18 @@ def paginate(blocks: list[Block], fonts: Fonts, width: int, height: int,
 
     for block in blocks:
         if isinstance(block, ImageBlock):
-            if y + IMAGE_PLACEHOLDER_HEIGHT > bottom:
+            if block.size:  # a real picture: scaled to fit the page, centered
+                w, h = fit_size(block.size, usable_width, bottom - margin)
+                if y + h > bottom and page.elements:
+                    new_page()
+                page.elements.append(PlacedImage(left + (usable_width - w) // 2, y, w, h,
+                                                 block.src, block.alt))
+                y += h + PARAGRAPH_GAP
+                continue
+            if y + IMAGE_PLACEHOLDER_HEIGHT > bottom:  # not found or unsupported: a labelled box
                 new_page()
             page.elements.append(PlacedImage(left, y, usable_width,
-                                             IMAGE_PLACEHOLDER_HEIGHT, block.src))
+                                             IMAGE_PLACEHOLDER_HEIGHT, block.src, block.alt))
             y += IMAGE_PLACEHOLDER_HEIGHT + PARAGRAPH_GAP
             continue
 
@@ -197,5 +212,5 @@ def paginate(blocks: list[Block], fonts: Fonts, width: int, height: int,
     return pages
 
 
-__all__ = ["break_lines", "paginate", "Page", "PlacedImage", "PlacedWord",
+__all__ = ["break_lines", "paginate", "fit_size", "Page", "PlacedImage", "PlacedWord",
            "TextBlock", "ImageBlock", "MARGIN", "PARAGRAPH_GAP"]

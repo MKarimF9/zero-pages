@@ -24,6 +24,7 @@ class PlacedImage:
     width: int
     height: int
     src: str
+    alt: str = ""
 
 
 @dataclass

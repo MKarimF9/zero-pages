@@ -67,7 +67,7 @@ def test_placeholder_scales_up_for_the_sleep_screen():
     small = placeholder_cover("A Title", (48, 64))
     big = placeholder_cover("كتاب مناقب الشافعي للبيهقي", (210, 284))
     assert big.size == (210, 284) and big.getbbox() is not None
-    ink = lambda im: sum(1 for p in im.getdata() if p == 0) / (im.width * im.height)
+    ink = lambda im: sum(1 for p in im.convert('L').tobytes() if p == 0) / (im.width * im.height)
     assert 0.02 < ink(big) < 0.5 and small.size == (48, 64)
 
 
