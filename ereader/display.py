@@ -39,6 +39,11 @@ class Display(ABC):
         """Put `image` on the screen. full_refresh=True clears ghosting (slow);
         False means a partial refresh (fast)."""
 
+    def set_idle_image(self, provider) -> None:
+        """`provider()` returns the image to leave on screen when the display
+        goes idle (a sleep screen), or None to keep the current page."""
+        self._idle_provider = provider
+
     def sleep(self) -> None:
         """Power down the display when idle. No-op by default."""
 
@@ -57,6 +62,12 @@ class PNGDisplay(Display):
         self.out_dir.mkdir(parents=True, exist_ok=True)
         (self.out_dir / "index.html").write_text(PREVIEW_HTML)
         self.frames = 0
+
+    def sleep(self) -> None:
+        """For development: write what the sleep screen would be to preview/sleep.png."""
+        image = getattr(self, "_idle_provider", lambda: None)()
+        if image is not None:
+            image.save(self.out_dir / "sleep.png")
 
     def show(self, image: Image.Image, full_refresh: bool) -> None:
         self.frames += 1
@@ -105,6 +116,7 @@ class EPaperDisplay(Display):
         self._lock = threading.Lock()      # the idle timer runs on another thread
         self._awake = False
         self._idle_token: object | None = None
+        self._idle_provider = None
 
     def show(self, image: Image.Image, full_refresh: bool) -> None:
         if image.size != (self.width, self.height):
@@ -127,9 +139,21 @@ class EPaperDisplay(Display):
                 timer.start()
 
     def _sleep_if_idle(self, token: object) -> None:
+        # Make the sleep screen first, without the lock: it can take a while on a
+        # Pi and a button press in the meantime must not have to wait for it.
+        image = None
+        if self._idle_provider and token is self._idle_token:
+            try:
+                image = self._idle_provider()
+            except Exception:
+                image = None  # no sleep screen is better than no sleep
         with self._lock:
-            if token is self._idle_token:  # no newer frame since this timer started
-                self._sleep_locked()
+            if token is not self._idle_token:  # a newer frame arrived: stay awake
+                return
+            if image is not None and image.size == (self.width, self.height) and self._awake:
+                self._epd.init()
+                self._epd.display(list(image.convert("1").tobytes()))  # full refresh, then power down
+            self._sleep_locked()
 
     def _sleep_locked(self) -> None:
         self._idle_token = None

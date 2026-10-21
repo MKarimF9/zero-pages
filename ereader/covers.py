@@ -19,11 +19,12 @@ from .fonts import Fonts
 from .ui import BLACK, WHITE, draw_icon, wrap_text
 
 THUMB_SIZE = (48, 64)
+COVER_VERSION = 2  # bump when covers are drawn differently, so cached thumbnails are remade
 
 
 def _cache_name(path: Path, size: tuple[int, int]) -> str:
     stat = path.stat()
-    key = f"{path}|{stat.st_mtime}|{stat.st_size}|{size[0]}x{size[1]}"
+    key = f"{COVER_VERSION}|{path}|{stat.st_mtime}|{stat.st_size}|{size[0]}x{size[1]}"
     return hashlib.sha1(key.encode()).hexdigest()[:16] + ".png"
 
 
@@ -38,17 +39,26 @@ def image_cover(data: bytes, size: tuple[int, int]) -> Image.Image:
 
 
 def placeholder_cover(title: str, size: tuple[int, int]) -> Image.Image:
-    """A cover for books without one: frame, icon, then the title."""
+    """A cover for books without one: frame, icon, then the title. Everything
+    scales with the size, so it works as a thumbnail and as a full sleep screen."""
     w, h = size
+    unit = max(1.0, w / THUMB_SIZE[0])                 # 1 at thumbnail size
     img = Image.new("1", size, WHITE)
     d = ImageDraw.Draw(img)
     d.rectangle((0, 0, w - 1, h - 1), outline=BLACK)
-    d.rectangle((3, 3, w - 4, h - 4), outline=BLACK)
-    draw_icon(d, "menu_book", w / 2, 14, 18, anchor="mm")
-    fonts = Fonts(10)
-    for i, line in enumerate(wrap_text(fonts, title, w - 12, 4, Style.BOLD)):
+    inset = max(3, round(3 * unit))
+    d.rectangle((inset, inset, w - inset - 1, h - inset - 1), outline=BLACK)
+    icon_size = round(18 * unit)
+    icon_y = round(14 * unit)
+    draw_icon(d, "menu_book", w / 2, icon_y, icon_size, anchor="mm")
+    font_size = max(10, round(10 * unit * 0.5))
+    fonts = Fonts(font_size)
+    top = icon_y + icon_size // 2 + round(6 * unit)
+    line_h = round(font_size * 1.25)
+    max_lines = max(4, (h - top - inset * 2) // line_h)
+    for i, line in enumerate(wrap_text(fonts, title, w - 4 * inset, max_lines, Style.BOLD)):
         font = fonts.get(Style.BOLD, line)
-        d.text((w / 2, 27 + i * 9), line, font=font, fill=BLACK, anchor="mm")
+        d.text((w / 2, top + line_h / 2 + i * line_h), line, font=font, fill=BLACK, anchor="mm")
     return img
 
 
