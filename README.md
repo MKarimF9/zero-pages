@@ -108,6 +108,10 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 
 The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a full refresh. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
 
+## Headings
+
+`<h1>`-`<h6>` are headings, and so are blocks the book marks with a title-like class (`chapter-title`, `subtitle`, `title`...), `role="heading"` or `epub:type="title"`: they are drawn bold and centered with extra space around them. A class-marked block longer than 40 words is treated as an ordinary paragraph.
+
 ## Chapters inside one file
 
 Many EPUBs put several chapters in one long file and point to each with an `#anchor`. The reader follows those anchors: a chapter starts its own chunk (so choosing it in the contents lands exactly on it, with its title), and the status bar names the chapter you are really in. If the anchor sits just after the chapter's title, as in the Quran EPUBs, the title is included. A chapter whose anchor can't be found falls back to the start of its file.
