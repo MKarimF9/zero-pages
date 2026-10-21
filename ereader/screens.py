@@ -431,3 +431,13 @@ class TocScreen(Screen):
 
     def close(self) -> None:
         self.reader.close()
+
+
+def initial_screen(ctx: AppContext, start: str = "last") -> Screen:
+    """Where the app opens. "last" goes straight into the book you were
+    reading (the library is one menu step away); anything else, or no usable
+    last book, opens the library."""
+    last = ctx.state.last_book
+    if start == "last" and last and Path(last).is_file():
+        return ReaderScreen(ctx, Path(last))
+    return LibraryScreen(ctx)

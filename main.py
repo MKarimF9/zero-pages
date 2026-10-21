@@ -17,13 +17,15 @@ from pathlib import Path
 from ereader.controls import Button, GPIOControls, KeyboardControls
 from ereader.display import EPaperDisplay, PNGDisplay
 from ereader.fonts import DEFAULT_FAMILY, Fonts
-from ereader.screens import AppContext, LibraryScreen
+from ereader.screens import AppContext, initial_screen
 from ereader.state import ReadingState
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Pi Zero W e-paper ebook reader")
     ap.add_argument("--books", default="~/books", help="folder with .epub files")
+    ap.add_argument("--start", choices=["last", "library"], default="last",
+                    help="open the last book you were reading (default) or the library")
     ap.add_argument("--display", choices=["png", "epaper"], default="png")
     ap.add_argument("--controls", choices=["keyboard", "gpio"], default="keyboard")
     ap.add_argument("--width", type=int, default=800, help="PNG preview only; e-paper uses the panel's size")
@@ -56,7 +58,7 @@ def main() -> None:
     # finally block below saves progress and puts the panel to sleep.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
-    screen = LibraryScreen(ctx)
+    screen = initial_screen(ctx, args.start)
     try:
         while True:
             display.show(screen.render(), full_refresh=screen.full_refresh)
