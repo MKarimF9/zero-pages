@@ -233,6 +233,34 @@ class LazyBook:
         """Index into epub.toc of the current chapter (0 if before the first)."""
         return max(0, self._chapter_pos())
 
+    def bookmark(self) -> dict:
+        """A bookmark for the page you are on. It stores where in the chunk the page is
+        as a fraction, not a page number, so it still fits after a font change."""
+        n = len(self.pages) or 1
+        return {"section": self.section, "chunk": self.chunk, "fraction": round(self.page / n, 6),
+                "chapter": self.chapter_title, "progress": round(self.progress, 4)}
+
+    def _bookmark_page(self, mark: dict) -> int | None:
+        """The page of the current chunk that a bookmark falls on (None: another chunk)."""
+        n = len(self.pages)
+        if (mark["section"], mark["chunk"]) != (self.section, self.chunk) or not n:
+            return None
+        return min(int(mark["fraction"] * n + 1e-3), n - 1)
+
+    def bookmarks_here(self, marks: list[dict]) -> list[dict]:
+        return [m for m in marks if self._bookmark_page(m) == self.page]
+
+    def is_bookmarked(self, marks: list[dict]) -> bool:
+        return bool(self.bookmarks_here(marks))
+
+    def goto_bookmark(self, mark: dict) -> None:
+        section = max(0, min(mark["section"], self.section_count - 1))
+        chunk = max(0, min(mark["chunk"], len(self._plan(section)) - 1))
+        pages = self._unit(section, chunk)
+        page = min(int(mark["fraction"] * len(pages) + 1e-3), len(pages) - 1) if pages else 0
+        self._seek(section, page, chunk)
+        self._trim()
+
     def goto_entry(self, index: int) -> None:
         """Jump to the start of a table-of-contents entry, even if it is in the
         middle of a long file."""

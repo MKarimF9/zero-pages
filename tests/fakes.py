@@ -24,3 +24,9 @@ def image(black_at=None):
     if black_at:
         img.putpixel(black_at, 0)
     return img
+
+
+def select_row(menu, key):
+    """Put a menu's cursor on the row with this key (rows move around as the menu grows)."""
+    menu.cursor = [i for i, row in enumerate(menu._items()) if row[0] == key][0]
+    return menu

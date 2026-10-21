@@ -5,6 +5,7 @@ from ereader.controls import Button as B
 from ereader.fonts import Fonts
 from ereader.screens import AppContext, LibraryScreen, menu_row_height
 from ereader.state import ReadingState
+from tests.fakes import select_row
 from tests.test_library_sort import make_book
 
 
@@ -116,8 +117,8 @@ def test_the_menu_pins_and_unpins(tmp_path):
     menu = reader.handle(B.SELECT)
     items = menu._items()
     pin = [i for i, row in enumerate(items) if row[0] == "pin"][0]
-    assert items[pin][2] == "Pin to top" and items[-1][0] == "delete" and items[-2][0] == "library"
-    menu.cursor = pin
+    assert items[pin][2] == "Pin to top" and items[-1][0] == "delete"
+    select_row(menu, "pin")
     assert menu.handle(B.SELECT) is None and state.is_pinned(str(reader.path)) and menu.full_refresh is False
     assert menu._items()[pin][2] == "Unpin from top"
     assert menu.handle(B.SELECT) is None and not state.is_pinned(str(reader.path))

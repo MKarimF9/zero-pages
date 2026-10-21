@@ -83,7 +83,8 @@ python3 main.py --display png --controls gpio --books ~/books --width 400 --heig
 |---|---|---|---|
 | Library | move between books | open the book | options: sort, filter, sleep screen, add books over Wi-Fi |
 | Reading | previous / next page | menu | same as select |
-| Menu | move | choose (*Resume*, *Table of contents*, *Font*, *Font size*, *Pin to top*, *Back to library*, *Delete this book*) | same as select |
+| Menu (scrolls) | move | choose (*Resume*, *Table of contents*, *Bookmarks*, *Bookmark this page*, *Back to library*, *Font*, *Font size*, *Pin to top*, *Delete this book*) | same as select |
+| Bookmarks | move (first row is *Back*) | go to the bookmark | **remove** the bookmark |
 | Delete this book? | choose *Keep the book* (default) or *Delete it* | confirm the choice | same as select |
 | Contents | move | jump to the chapter (first row is *Back*) | same as select |
 | Library options | move | change the value (*Sort by*, *Show*, *Sleep screen*), or open *Add books over Wi-Fi*, or go back | same as select |
@@ -267,7 +268,7 @@ git log --oneline --graph | head -20     # history
 git branch -a                            # all branches
 gh repo view --web                       # open the repo in your browser
 ```
-Branches so far: `feature/open-last-book`, `feature/metadata-cache`, `feature/covers`, `feature/reading-status`, `feature/wrapped-titles-rtl-rows`, `feature/library-sort-filter`, `feature/sleep-screen`, `feature/chunked-layout`, `feature/arrow-keys`, `feature/wifi-upload`, `docs/commands-cheatsheet`, `feature/book-images`, `feature/delete-book`, `feature/anchor-chapters`, `feature/class-headings`, `feature/pinned-books`.
+Branches so far: `feature/open-last-book`, `feature/metadata-cache`, `feature/covers`, `feature/reading-status`, `feature/wrapped-titles-rtl-rows`, `feature/library-sort-filter`, `feature/sleep-screen`, `feature/chunked-layout`, `feature/arrow-keys`, `feature/wifi-upload`, `docs/commands-cheatsheet`, `feature/book-images`, `feature/delete-book`, `feature/anchor-chapters`, `feature/class-headings`, `feature/pinned-books`, `feature/bookmarks`.
 
 The Pi has a **read-only** deploy key, so it can `git pull` but never push.
 

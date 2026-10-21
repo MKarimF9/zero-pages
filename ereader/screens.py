@@ -126,27 +126,71 @@ def _next(options: dict, current: str) -> str:
     return keys[(keys.index(current) + 1) % len(keys)] if current in keys else keys[0]
 
 
+SCROLL_AFTER = 7   # menus with more rows than this scroll instead of shrinking
+
+
+def _menu_top(ctx: "AppContext") -> int:
+    """Where the rows of a menu begin (just under the header)."""
+    return ctx.ui_fonts.line_height + 8 + 2
+
+
+def _footer_top(ctx: "AppContext") -> int:
+    return ctx.height - (ctx.ui_fonts.line_height + 8) - 2
+
+
 def menu_row_height(ctx: "AppContext", count: int, top: int) -> int:
     """Rows are comfortably tall, but shrink so that `count` of them fit above the footer."""
-    footer_top = ctx.height - (ctx.ui_fonts.line_height + 8) - 2
-    return min(ctx.ui_fonts.line_height + 12, (footer_top - top - 6) // count)
+    return min(ctx.ui_fonts.line_height + 12, (_footer_top(ctx) - top - 6) // count)
+
+
+def menu_capacity(ctx: "AppContext", top: int) -> int:
+    """How many rows of a scrolling menu are visible at once."""
+    return max(1, (_footer_top(ctx) - top - 6) // (ctx.ui_fonts.line_height + 8))
+
+
+def menu_window(ctx: "AppContext", count: int, cursor: int, offset: int) -> int:
+    """The first visible row of a scrolling menu, moved just enough to keep the cursor in view."""
+    if count <= SCROLL_AFTER:
+        return 0
+    cap = menu_capacity(ctx, _menu_top(ctx))
+    if cursor < offset:
+        offset = cursor
+    elif cursor >= offset + cap:
+        offset = cursor - cap + 1
+    return max(0, min(offset, count - cap))
 
 
 def _draw_menu_rows(ctx: "AppContext", d: ImageDraw.ImageDraw, top: int,
-                    rows: list[tuple[str, str, str]], cursor: int) -> None:
-    """Rows of (icon, label, value), the cursor row inverted. Shared by the
-    reader menu and the library options."""
+                    rows: list[tuple[str, str, str]], cursor: int, offset: int = 0) -> None:
+    """Rows of (icon, label, value), the cursor row inverted. Shared by the reader
+    menu, the library options and the bookmark list. Long menus scroll, with a
+    scrollbar on the right."""
     ui, w = ctx.ui_fonts, ctx.width
-    row_h = menu_row_height(ctx, len(rows), top)
-    for i, (icon, label, value) in enumerate(rows):
-        y0 = top + 6 + i * row_h
+    count = len(rows)
+    scrolling = count > SCROLL_AFTER
+    if scrolling:
+        row_h, cap = ui.line_height + 8, menu_capacity(ctx, top)
+        shown = range(offset, min(count, offset + cap))
+    else:
+        row_h, cap = menu_row_height(ctx, count, top), count
+        shown = range(count)
+    bar_w = w - (9 if scrolling else 0)   # leave room for the scrollbar
+    for pos, i in enumerate(shown):
+        icon, label, value = rows[i]
+        y0 = top + 6 + pos * row_h
         fg = WHITE if i == cursor else BLACK
         if i == cursor:
-            d.rectangle((0, y0, w, y0 + row_h - 1), fill=BLACK)
+            d.rectangle((0, y0, bar_w, y0 + row_h - 1), fill=BLACK)
         draw_icon(d, icon, PAD, y0 + row_h / 2, 22, fill=fg)
-        draw_text(d, ui, label, PAD + 32, w - PAD - 90, y0 + row_h / 2, fill=fg, align="left")
+        draw_text(d, ui, label, PAD + 32, bar_w - PAD - 90, y0 + row_h / 2, fill=fg, align="left")
         if value:
-            d.text((w - PAD, y0 + row_h / 2), value, font=ui.get(), fill=fg, anchor="rm")
+            d.text((bar_w - PAD, y0 + row_h / 2), value, font=ui.get(), fill=fg, anchor="rm")
+    if scrolling:
+        track_y, track_h = top + 6, cap * row_h
+        d.rectangle((w - 6, track_y, w - 3, track_y + track_h - 1), outline=BLACK)
+        thumb_h = max(8, track_h * cap // count)
+        thumb_y = track_y + (track_h - thumb_h) * offset // max(1, count - cap)
+        d.rectangle((w - 6, thumb_y, w - 3, thumb_y + thumb_h - 1), fill=BLACK)
 
 
 def _move(cursor: int, count: int, button: Button) -> int:
@@ -477,6 +521,7 @@ class Status:
     pages: int
     progress: float
     rtl: bool
+    bookmarked: bool = False
 
 
 def draw_status_bar(ctx: AppContext, d: ImageDraw.ImageDraw, st: Status) -> None:
@@ -516,6 +561,8 @@ def draw_page(ctx: AppContext, page: Page, status: Status, load_image=None) -> I
                 d.rectangle((el.x, el.y, el.x + el.width - 1, el.y + el.height - 1), outline=BLACK)
                 draw_text(d, ctx.small, el.alt or "[image]", el.x + 8, el.x + el.width - 8,
                           el.y + el.height / 2, align="center")
+    if status.bookmarked:  # a small bookmark in the top corner, in the margin above the text
+        draw_icon(d, "bookmark", ctx.width - MARGIN - 8, 11, 18, anchor="mm")
     draw_status_bar(ctx, d, status)
     return img
 
@@ -578,7 +625,8 @@ class ReaderScreen(Screen):
             return draw_message(self.ctx, ["This book has no pages.", "Press select to go back."])
         book = self.book
         status = Status(chapter=book.chapter_title or self.path.stem, page=book.page + 1,
-                        pages=len(book.pages), progress=book.progress, rtl=book.rtl)
+                        pages=len(book.pages), progress=book.progress, rtl=book.rtl,
+                        bookmarked=book.is_bookmarked(self.ctx.state.get_bookmarks(str(self.path))))
         return draw_page(self.ctx, book.current, status, book.image)
 
     def handle(self, button: Button) -> Screen | None:
@@ -624,18 +672,24 @@ class MenuScreen(Screen):
         self.ctx = ctx
         self.reader = reader
         self.cursor = 0
+        self.offset = 0   # first visible row (the menu scrolls)
         self.full_refresh = True
 
     def _items(self) -> list[tuple[str, str, str, str]]:
         """(key, icon, label, value) rows."""
+        state, path = self.ctx.state, str(self.reader.path)
+        marks = state.get_bookmarks(path)
+        here = self.reader.book.is_bookmarked(marks)
         items = [("resume", "play_arrow", "Resume", "")]
         if self.reader.book.epub.toc:
             items.append(("toc", "toc", "Table of contents", ""))
+        items.append(("bookmarks", "bookmarks", "Bookmarks", str(len(marks)) if marks else ""))
+        items.append(("bookmark", "bookmark_remove" if here else "bookmark_add",
+                      "Remove bookmark" if here else "Bookmark this page", ""))
+        items.append(("library", "local_library", "Back to library", ""))
         items.append(("family", "text_fields", "Font", self.ctx.fonts.family))
         items.append(("font", "format_size", "Font size", str(self.ctx.fonts.size)))
-        pinned = self.ctx.state.is_pinned(str(self.reader.path))
-        items.append(("pin", "push_pin", "Unpin from top" if pinned else "Pin to top", ""))
-        items.append(("library", "local_library", "Back to library", ""))
+        items.append(("pin", "push_pin", "Unpin from top" if state.is_pinned(path) else "Pin to top", ""))
         items.append(("delete", "delete", "Delete this book", ""))  # last, and asks first
         return items
 
@@ -644,13 +698,16 @@ class MenuScreen(Screen):
         img = blank(ctx)
         percent = f"{round(self.reader.book.progress * 100)}%"
         d, top, _ = list_frame(img, ctx.ui_fonts, "Menu", percent, icon="menu_book")
-        _draw_menu_rows(ctx, d, top, [i[1:] for i in self._items()], self.cursor)
+        items = self._items()
+        self.offset = menu_window(ctx, len(items), self.cursor, self.offset)
+        _draw_menu_rows(ctx, d, top, [i[1:] for i in items], self.cursor, self.offset)
         return img
 
     def handle(self, button: Button) -> Screen | None:
         items = self._items()
         if button is not Button.SELECT:
             self.cursor = _move(self.cursor, len(items), button)
+            self.offset = menu_window(self.ctx, len(items), self.cursor, self.offset)
             self.full_refresh = False
             return None
 
@@ -659,6 +716,18 @@ class MenuScreen(Screen):
             return self.reader.resume()
         if key == "toc":
             return TocScreen(self.ctx, self.reader, self)
+        if key == "bookmarks":
+            return BookmarksScreen(self.ctx, self.reader, self)
+        if key == "bookmark":
+            state, path, book = self.ctx.state, str(self.reader.path), self.reader.book
+            marks = state.get_bookmarks(path)
+            if book.is_bookmarked(marks):
+                for mark in book.bookmarks_here(marks):
+                    state.remove_bookmark(path, mark)
+            else:
+                state.add_bookmark(path, book.bookmark())
+            self.full_refresh = False
+            return None
         if key in ("family", "font"):
             self._change_font(next_family=key == "family")
             self.full_refresh = False
@@ -766,6 +835,69 @@ def initial_screen(ctx: AppContext, start: str = "last") -> Screen:
     if start == "last" and last and Path(last).is_file():
         return ReaderScreen(ctx, Path(last))
     return LibraryScreen(ctx)
+
+
+class BookmarksScreen(Screen):
+    """The bookmarks of the open book. Select goes to one; hold select removes it."""
+
+    handles_long_press = True
+
+    def __init__(self, ctx: AppContext, reader: ReaderScreen, menu: MenuScreen):
+        self.ctx, self.reader, self.menu = ctx, reader, menu
+        self.cursor = 1 if self._marks() else 0   # row 0 is "Back"
+        self.offset = 0
+        self.full_refresh = True
+
+    def _marks(self) -> list[dict]:
+        return self.ctx.state.get_bookmarks(str(self.reader.path))
+
+    def _rows(self) -> list[tuple[str, str, str]]:
+        rows = [("arrow_back", "Back", "")]
+        for mark in self._marks():
+            percent = f"{round(mark['progress'] * 100)}%"
+            rows.append(("bookmark", mark.get("chapter") or percent, percent))
+        return rows
+
+    def render(self) -> Image.Image:
+        ctx = self.ctx
+        rows = self._rows()
+        img = blank(ctx)
+        d, top, _ = list_frame(img, ctx.ui_fonts, "Bookmarks", str(len(rows) - 1) if len(rows) > 1 else "",
+                               icon="bookmarks", labels=("Up", "Go · hold: remove", "Down"), hint_fonts=ctx.small)
+        self.offset = menu_window(ctx, len(rows), self.cursor, self.offset)
+        _draw_menu_rows(ctx, d, top, rows, self.cursor, self.offset)
+        if len(rows) == 1:
+            row_h = menu_row_height(ctx, 1, top)
+            draw_text(d, ctx.small, "No bookmarks yet.", PAD, ctx.width - PAD, top + 6 + row_h + 22, align="left")
+            draw_text(d, ctx.small, "Use \"Bookmark this page\" in the menu.", PAD, ctx.width - PAD,
+                      top + 6 + row_h + 44, align="left")
+        return img
+
+    def handle(self, button: Button) -> Screen | None:
+        rows = self._rows()
+        if button is Button.SELECT_LONG and self.cursor > 0:  # remove the selected bookmark
+            self.ctx.state.remove_bookmark(str(self.reader.path), self._marks()[self.cursor - 1])
+            self.cursor = min(self.cursor, len(self._marks()))
+            self.full_refresh = False
+            return None
+        if button not in (Button.SELECT, Button.SELECT_LONG):
+            self.cursor = _move(self.cursor, len(rows), button)
+            self.offset = menu_window(self.ctx, len(rows), self.cursor, self.offset)
+            self.full_refresh = False
+            return None
+        if self.cursor == 0:
+            self.menu.full_refresh = True
+            return self.menu
+        self.reader.book.goto_bookmark(self._marks()[self.cursor - 1])
+        self.reader.unsaved_turns += 1
+        self.reader._save_progress()
+        return self.reader.resume()
+
+    def sleep_image(self) -> Image.Image | None:
+        return self.reader.sleep_image()
+
+    def close(self) -> None:
+        self.reader.close()
 
 
 class DeleteBookScreen(Screen):

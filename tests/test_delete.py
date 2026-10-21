@@ -8,6 +8,7 @@ from ereader.fonts import Fonts
 from ereader.screens import (AppContext, DeleteBookScreen, LibraryScreen, MenuScreen, ReaderScreen,
                              menu_row_height)
 from ereader.state import ReadingState
+from tests.fakes import select_row
 from tests.make_epub import make_epub
 
 
@@ -25,23 +26,33 @@ def open_delete_screen(ctx):
     menu = reader.handle(B.SELECT)
     items = menu._items()
     assert items[-1][0] == "delete" and items[-1][2] == "Delete this book"   # the last row
-    menu.cursor = len(items) - 1
+    select_row(menu, "delete")
     screen = menu.handle(B.SELECT)
     assert isinstance(screen, DeleteBookScreen)
     return reader, menu, screen
 
 
-def test_menu_rows_fit_on_the_small_screen(tmp_path):
+def test_the_long_menu_scrolls_and_keeps_the_cursor_in_view(tmp_path):
+    from ereader.screens import menu_capacity, menu_window
     ctx, state, books = make_ctx(tmp_path)
     reader = LibraryScreen(ctx).handle(B.SELECT)
     menu = reader.handle(B.SELECT)
     n = len(menu._items())
-    assert n == 7
     top = ctx.ui_fonts.line_height + 8 + 2
-    footer_top = 300 - (ctx.ui_fonts.line_height + 8) - 2
-    assert 6 + n * menu_row_height(ctx, n, top) <= footer_top - top           # every row is above the footer
-    assert menu_row_height(ctx, 2, top) == ctx.ui_fonts.line_height + 12      # few rows keep the roomy height
+    cap = menu_capacity(ctx, top)
+    assert n > 7 and 5 <= cap < n                                   # more rows than fit: it scrolls
     assert menu.render().size == (400, 300)
+    seen = set()
+    for _ in range(n + 2):                                          # all the way round, with wrap-around
+        assert menu.offset <= menu.cursor < menu.offset + cap
+        seen.add(menu.cursor)
+        menu.render()
+        menu.handle(B.DOWN)
+    assert seen == set(range(n))
+    menu.cursor = 0; menu.offset = 0
+    menu.handle(B.UP)                                               # up from the first row wraps to the last
+    assert menu.cursor == n - 1 and menu.offset == n - cap
+    assert menu_window(ctx, 5, 4, 3) == 0                           # short menus never scroll
 
 
 def test_the_confirm_screen_starts_on_keep_and_cancel_changes_nothing(tmp_path):

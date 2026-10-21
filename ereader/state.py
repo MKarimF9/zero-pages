@@ -21,7 +21,7 @@ FINISHED_AT = 0.98  # progress at which a book counts as finished
 class ReadingState:
     def __init__(self, path: str | Path = DEFAULT_PATH):
         self.path = Path(path).expanduser()
-        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "chunks": {}, "opened": {}, "pinned": [], "settings": {}, "last_book": None}
+        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "chunks": {}, "opened": {}, "pinned": [], "bookmarks": {}, "settings": {}, "last_book": None}
         try:
             self._data.update(json.loads(self.path.read_text()))
         except (FileNotFoundError, json.JSONDecodeError):
@@ -59,6 +59,25 @@ class ReadingState:
         """Fraction of the book read (0..1), for the library's progress bars."""
         return float(self._data["progress"].get(book, 0.0))
 
+    def get_bookmarks(self, book: str) -> list[dict]:
+        """Bookmarks of a book, in reading order. Each is {section, chunk, fraction (of the
+        chunk, so it survives a change of font size), chapter, progress}."""
+        return [dict(b) for b in self._data.get("bookmarks", {}).get(book, [])]
+
+    def add_bookmark(self, book: str, bookmark: dict) -> None:
+        marks = self._data.setdefault("bookmarks", {}).setdefault(book, [])
+        marks.append(dict(bookmark))
+        marks.sort(key=lambda b: (b["section"], b["chunk"], b["fraction"]))
+        self.save()
+
+    def remove_bookmark(self, book: str, bookmark: dict) -> None:
+        key = lambda b: (b["section"], b["chunk"], b["fraction"])
+        marks = self._data.get("bookmarks", {}).get(book, [])
+        marks[:] = [b for b in marks if key(b) != key(bookmark)]
+        if not marks:
+            self._data.get("bookmarks", {}).pop(book, None)
+        self.save()
+
     def get_pinned(self) -> list[str]:
         """Pinned books, in the order they were pinned."""
         return list(self._data.get("pinned", []))
@@ -76,7 +95,7 @@ class ReadingState:
 
     def forget(self, book: str) -> None:
         """Remove everything remembered about a book (its place, progress, chapter...)."""
-        for table in ("pages", "positions", "progress", "chapters", "chunks", "opened"):
+        for table in ("pages", "positions", "progress", "chapters", "chunks", "opened", "bookmarks"):
             self._data.get(table, {}).pop(book, None)
         if self._data.get("last_book") == book:
             self._data["last_book"] = None
