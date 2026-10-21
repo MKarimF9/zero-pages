@@ -83,7 +83,8 @@ python3 main.py --display png --controls gpio --books ~/books --width 400 --heig
 |---|---|---|---|
 | Library | move between books | open the book | options: sort, filter, sleep screen, add books over Wi-Fi |
 | Reading | previous / next page | menu | same as select |
-| Menu | move | choose (*Resume*, *Table of contents*, *Font*, *Font size*, *Back to library*) | same as select |
+| Menu | move | choose (*Resume*, *Table of contents*, *Font*, *Font size*, *Back to library*, *Delete this book*) | same as select |
+| Delete this book? | choose *Keep the book* (default) or *Delete it* | confirm the choice | same as select |
 | Contents | move | jump to the chapter (first row is *Back*) | same as select |
 | Library options | move | change the value (*Sort by*, *Show*, *Sleep screen*), or open *Add books over Wi-Fi*, or go back | same as select |
 | Add books over Wi-Fi | refresh | stop and go back | same as select |
@@ -123,6 +124,8 @@ from ereader.library import BookIndex
 for b in BookIndex('/tmp/lib.json').scan(pathlib.Path('~/books').expanduser()):
     print(b.path.name, '|', b.title, '|', b.author)"
 ```
+
+**Delete a book:** on the reader, open a book, press select for the menu, move to **Delete this book**, select, choose *Delete it*. Or use the *Delete* button on the Wi-Fi page, or `rm ~/books/"name.epub"` on the Pi.
 
 **Only `.epub` works.** For PDFs see section 8.
 
@@ -264,7 +267,7 @@ git log --oneline --graph | head -20     # history
 git branch -a                            # all branches
 gh repo view --web                       # open the repo in your browser
 ```
-Branches so far: `feature/open-last-book`, `feature/metadata-cache`, `feature/covers`, `feature/reading-status`, `feature/wrapped-titles-rtl-rows`, `feature/library-sort-filter`, `feature/sleep-screen`, `feature/chunked-layout`, `feature/arrow-keys`, `feature/wifi-upload`, `docs/commands-cheatsheet`, `feature/book-images`.
+Branches so far: `feature/open-last-book`, `feature/metadata-cache`, `feature/covers`, `feature/reading-status`, `feature/wrapped-titles-rtl-rows`, `feature/library-sort-filter`, `feature/sleep-screen`, `feature/chunked-layout`, `feature/arrow-keys`, `feature/wifi-upload`, `docs/commands-cheatsheet`, `feature/book-images`, `feature/delete-book`.
 
 The Pi has a **read-only** deploy key, so it can `git pull` but never push.
 

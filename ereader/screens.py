@@ -24,6 +24,7 @@ from .blocks import Style
 from .book import LazyBook
 from .controls import Button
 from .fonts import FAMILIES, Fonts
+from .cache import forget_book
 from .covers import THUMB_SIZE, cached_cover
 from .layout import MARGIN, text_is_rtl
 from .library import BookIndex
@@ -125,12 +126,18 @@ def _next(options: dict, current: str) -> str:
     return keys[(keys.index(current) + 1) % len(keys)] if current in keys else keys[0]
 
 
+def menu_row_height(ctx: "AppContext", count: int, top: int) -> int:
+    """Rows are comfortably tall, but shrink so that `count` of them fit above the footer."""
+    footer_top = ctx.height - (ctx.ui_fonts.line_height + 8) - 2
+    return min(ctx.ui_fonts.line_height + 12, (footer_top - top - 6) // count)
+
+
 def _draw_menu_rows(ctx: "AppContext", d: ImageDraw.ImageDraw, top: int,
                     rows: list[tuple[str, str, str]], cursor: int) -> None:
     """Rows of (icon, label, value), the cursor row inverted. Shared by the
     reader menu and the library options."""
     ui, w = ctx.ui_fonts, ctx.width
-    row_h = ui.line_height + 12
+    row_h = menu_row_height(ctx, len(rows), top)
     for i, (icon, label, value) in enumerate(rows):
         y0 = top + 6 + i * row_h
         fg = WHITE if i == cursor else BLACK
@@ -602,6 +609,7 @@ class MenuScreen(Screen):
         items.append(("family", "text_fields", "Font", self.ctx.fonts.family))
         items.append(("font", "format_size", "Font size", str(self.ctx.fonts.size)))
         items.append(("library", "local_library", "Back to library", ""))
+        items.append(("delete", "delete", "Delete this book", ""))  # last, and asks first
         return items
 
     def render(self) -> Image.Image:
@@ -628,6 +636,8 @@ class MenuScreen(Screen):
             self._change_font(next_family=key == "family")
             self.full_refresh = False
             return None
+        if key == "delete":
+            return DeleteBookScreen(self.ctx, self.reader, self)
         self.reader.close()  # "library"
         return LibraryScreen(self.ctx)
 
@@ -724,3 +734,81 @@ def initial_screen(ctx: AppContext, start: str = "last") -> Screen:
     if start == "last" and last and Path(last).is_file():
         return ReaderScreen(ctx, Path(last))
     return LibraryScreen(ctx)
+
+
+class DeleteBookScreen(Screen):
+    """Asks before deleting the book you're reading. "Keep the book" is selected
+    first, so a stray press can't delete anything."""
+
+    def __init__(self, ctx: AppContext, reader: ReaderScreen, menu: MenuScreen):
+        self.ctx, self.reader, self.menu = ctx, reader, menu
+        self.cursor = 0  # 0 = keep, 1 = delete
+        self.error = ""
+        self.full_refresh = True
+
+    @property
+    def title(self) -> str:
+        return (self.reader.book.epub.title if self.reader.book else "") or self.reader.path.stem
+
+    def _deletable(self) -> bool:
+        """Only a plain .epub that sits directly in the books folder."""
+        path = self.reader.path
+        try:
+            return (path.suffix.lower() == ".epub" and path.is_file()
+                    and path.resolve().parent == Path(self.ctx.books_dir).expanduser().resolve())
+        except OSError:
+            return False
+
+    def render(self) -> Image.Image:
+        ctx, ui, small = self.ctx, self.ctx.ui_fonts, self.ctx.small
+        img = blank(ctx)
+        d, top, _ = list_frame(img, ui, "Delete this book?", icon="delete")
+        x, w, y = PAD, ctx.width, top + 8
+        for line in wrap_text(ui, self.title, w - 2 * x, 2, Style.BOLD):
+            draw_text(d, ui, line, x, w - x, y + 12, Style.BOLD)
+            y += 26
+        message = self.error or "It is removed from the reader and can't be undone."
+        for line in wrap_text(small, message, w - 2 * x, 2):
+            draw_text(d, small, line, x, w - x, y + 10)
+            y += 20
+        _draw_menu_rows(ctx, d, y + 6, [("arrow_back", "Keep the book", ""), ("delete", "Delete it", "")],
+                        self.cursor)
+        return img
+
+    def handle(self, button: Button) -> Screen | None:
+        if button is not Button.SELECT:
+            self.cursor = _move(self.cursor, 2, button)
+            self.error = ""
+            self.full_refresh = False
+            return None
+        if self.cursor == 0:
+            self.menu.full_refresh = True
+            return self.menu
+        return self._delete()
+
+    def _delete(self) -> Screen | None:
+        ctx, reader = self.ctx, self.reader
+        path = reader.path
+        if not self._deletable():
+            self.error = "This file can't be deleted from here."
+        else:
+            try:
+                path.unlink()
+            except OSError as e:
+                self.error = f"Couldn't delete it: {e.strerror or e}"
+        if self.error:
+            self.cursor = 0
+            self.full_refresh = False
+            return None
+        reader.unsaved_turns = 0   # don't write a saved place for a book that's gone
+        reader.close()
+        ctx.state.forget(str(path))
+        forget_book(ctx.state.path.parent, path)
+        return LibraryScreen(ctx)
+
+    def sleep_image(self) -> Image.Image | None:
+        return self.reader.sleep_image()
+
+    def close(self) -> None:
+        self.reader.close()
+

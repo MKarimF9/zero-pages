@@ -14,6 +14,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
+from .cache import book_cache_dir
 from .epub import Epub
 
 CACHE_VERSION = 1            # bump when pictures are drawn differently, so cached ones are remade
@@ -54,7 +55,7 @@ def render(epub: Epub, path: str, size: tuple[int, int], cache_dir: Path | None 
     if cache_dir is not None:
         stat = epub.path.stat()
         key = f"{CACHE_VERSION}|{epub.path}|{stat.st_mtime}|{stat.st_size}|{path}|{size[0]}x{size[1]}"
-        cached = cache_dir / "images" / (hashlib.sha1(key.encode()).hexdigest()[:16] + ".png")
+        cached = book_cache_dir(cache_dir, "images", epub.path) / (hashlib.sha1(key.encode()).hexdigest()[:16] + ".png")
         try:
             return Image.open(cached).convert("1")
         except (FileNotFoundError, OSError):
