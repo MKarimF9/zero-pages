@@ -106,6 +106,14 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 
 The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a full refresh. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
 
+## Adding books over Wi-Fi
+
+Hold select on the library (keyboard: `m`), choose **Add books over Wi-Fi**. The screen shows an address like `http://192.168.1.50:8080` and a 4-digit PIN. Open the address on your phone or computer (same Wi-Fi), type the PIN, then pick or drag in `.epub` files. Press select on the reader when you're done: the upload server runs only while that screen is open, so nothing is listening on your network the rest of the time.
+
+Safety: every request needs the PIN (5 wrong guesses lock it for a minute); only plain `.epub` file names up to 100 MB are accepted, each file must actually open as an EPUB or it's discarded, and uploads are written to a hidden temporary file first, so a half-finished upload never appears as a book. Uploading a name that already exists replaces that book.
+
+You can also run it without the reader: `python3 -m ereader.upload --books ~/books` prints the address and PIN. It uses only the standard library, so there is nothing extra to install.
+
 ## Long chapters
 
 Books are laid out lazily: only the part you are reading, plus its neighbours, is in memory. A chapter file bigger than about 60 KB is cut into chunks of about 40 KB at paragraph ends (`CHUNK_BYTES` in `ereader/book.py`), so a huge single-chapter book opens at once and uses a few MB, not tens. Measured on a Mac with a synthetic 2 MB chapter: first page in 0.6 s (was 30 s), Python memory 5 MB (was 55 MB). Pi Zero numbers will differ; time it with the `[reader] section ... pages in ...s` lines the app prints.
@@ -144,4 +152,3 @@ Stretch goals:
 - Dynamic-programming line breaking (`break_lines_dp`), compared against greedy
 - Real images in pages
 - Turn off Wi-Fi while reading; measure the power draw before and after
-- A Wi-Fi upload page for adding books
