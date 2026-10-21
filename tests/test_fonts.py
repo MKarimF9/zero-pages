@@ -38,3 +38,11 @@ def test_arabic_word_with_punctuation_and_digits_has_no_missing_glyphs():
     font = Fonts(22).get(Style.NORMAL, "الجزء: 7 ۝")
     for ch in "الجزء:7 ":
         assert font.getmask(ch).getbbox() is not None or ch == " "
+
+
+def test_every_icon_is_in_the_icon_font():
+    from fontTools.ttLib import TTFont  # dev tool: pip install fonttools
+    from ereader.ui import ICON_FONT, ICONS
+    cmap = TTFont(ICON_FONT).getBestCmap()
+    missing = [name for name, ch in ICONS.items() if ord(ch) not in cmap]
+    assert not missing, f"not in assets/MaterialSymbols-subset.ttf: {missing} (run tools/make_icon_font.py)"

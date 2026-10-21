@@ -35,6 +35,7 @@ ICONS = {
     "local_library": "\ue54b",
     "arrow_back": "\ue5c4",
     "bookmark": "\ue8e7",
+    "check_circle": "\uf0be",
     "library_books": "\ue02f",
     "menu_book": "\uea19",
 }

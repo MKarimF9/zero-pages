@@ -66,13 +66,13 @@ class LazyBook:
 
     @property
     def progress(self) -> float:
-        """Fraction of the book read, 0..1. Estimated from file sizes (every
+        """Fraction of the book read, 0..1; 1.0 on the very last page. Estimated from file sizes (every
         section's size is known without laying it out), so it's approximate
         but costs nothing."""
         if not self._total:
             return self.section / max(1, self.section_count)
         pages = self.pages
-        within = self.page / len(pages) if pages else 0.0
+        within = (self.page + 1) / len(pages) if pages else 0.0  # end of this page: last page = 100%
         return (self._section_start[self.section] + within * self._sizes[self.section]) / self._total
 
     @property

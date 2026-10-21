@@ -87,7 +87,8 @@ def test_progress_grows_from_zero_to_nearly_one(tmp_path):
     seen = [book.progress]
     while book.next():
         seen.append(book.progress)
-    assert seen[0] == 0 and seen == sorted(seen) and 0.5 < seen[-1] < 1
+    assert 0 < seen[0] < 0.5 and seen == sorted(seen)
+    assert seen[-1] == 1.0          # the very last page is 100%
 
 
 def test_chapter_title_and_goto(tmp_path):

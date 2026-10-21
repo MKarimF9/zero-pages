@@ -30,11 +30,13 @@ from .library import BookIndex
 from .page import Page, PlacedImage, PlacedWord
 from .state import ReadingState
 from .ui import (BLACK, PAD, STATUS_BAR_HEIGHT, WHITE, draw_icon, draw_progress,
-                 draw_text, list_frame)
+                 draw_text, list_frame, wrap_text)
 
 FULL_REFRESH_EVERY = 8  # partial refreshes allowed before a full one
 SAVE_EVERY = 5          # page turns between progress saves (each save writes the SD card)
 FONT_SIZES = (18, 20, 22, 24, 28, 32)
+CARD_THUMB = (57, 76)   # bigger cover for the Continue reading card
+CARD_HEIGHT = 96
 
 
 @dataclass
@@ -92,6 +94,9 @@ def _move(cursor: int, count: int, button: Button) -> int:
 # --------------------------------------------------------------------------- Library
 
 class LibraryScreen(Screen):
+    """Books with cover, author and status. If you're partway through one, it
+    sits on top as a larger "Continue reading" card."""
+
     def __init__(self, ctx: AppContext):
         self.ctx = ctx
         index = BookIndex(ctx.state.path.parent / "library.json")  # next to the reading state
@@ -100,56 +105,112 @@ class LibraryScreen(Screen):
         self.infos = infos
         self.books = [b.path for b in infos]
         self.meta = [(b.title, b.author) for b in infos]  # (title, author)
+        # the last-read book becomes the card, unless it's finished
+        self.has_card = bool(infos) and str(infos[0].path) == ctx.state.last_book \
+            and ctx.state.status(str(infos[0].path)) == "reading"
         self.cursor = 0
         self.full_refresh = True
-        self._covers: dict[int, Image.Image] = {}  # row index -> thumbnail, made when first shown
+        self._covers: dict[tuple[int, tuple[int, int]], Image.Image] = {}  # made when first shown
+
+    # ---- layout: the card is taller than a row, so pages are built by height
 
     @property
     def _row_h(self) -> int:
         return THUMB_SIZE[1] + 8   # the cover sets the row height
 
-    @property
-    def _rows_per_page(self) -> int:
+    def _height(self, i: int) -> int:
+        return CARD_HEIGHT if (i == 0 and self.has_card) else self._row_h
+
+    def _pages(self) -> list[tuple[int, int]]:
+        """[(first, end)] book indexes for each screenful, filled greedily."""
         body = self.ctx.height - 2 * (self.ctx.ui_fonts.line_height + 8) - 4
-        return max(1, body // self._row_h)
+        pages, start, used = [], 0, 0
+        for i in range(len(self.books)):
+            if used + self._height(i) > body and i > start:
+                pages.append((start, i))
+                start, used = i, 0
+            used += self._height(i)
+        pages.append((start, len(self.books)))
+        return pages
+
+    def _cover(self, i: int, size: tuple[int, int]) -> Image.Image:
+        if (i, size) not in self._covers:
+            self._covers[(i, size)] = cached_cover(self.ctx.state.path.parent, self.books[i],
+                                                   self.meta[i][0], size)
+        return self._covers[(i, size)]
+
+    # ---- drawing
 
     def render(self) -> Image.Image:
         ctx = self.ctx
         if not self.books:
             return draw_message(ctx, ["No books found", f"Copy .epub files into {ctx.books_dir}"])
 
-        per = self._rows_per_page
-        start = (self.cursor // per) * per
-        pages = (len(self.books) - 1) // per + 1
+        pages = self._pages()
+        page = next(n for n, (a, b) in enumerate(pages) if a <= self.cursor < b)
         img = blank(ctx)
-        d, top, _ = list_frame(img, ctx.ui_fonts, "Library", f"{start // per + 1}/{pages}",
-                              icon="library_books")
-        ui, small, row_h, w = ctx.ui_fonts, ctx.small, self._row_h, ctx.width
-
-        for row, i in enumerate(range(start, min(start + per, len(self.books)))):
-            y0 = top + row * row_h
+        d, y, _ = list_frame(img, ctx.ui_fonts, "Library", f"{page + 1}/{len(pages)}",
+                             icon="library_books")
+        for i in range(*pages[page]):
+            height = self._height(i)
             selected = i == self.cursor
             fg = WHITE if selected else BLACK
             if selected:  # inverted bar = the e-paper version of a highlight
-                d.rectangle((0, y0, w, y0 + row_h - 1), fill=BLACK)
-            title, author = self.meta[i]
-            if i not in self._covers:
-                self._covers[i] = cached_cover(ctx.state.path.parent, self.books[i], title)
-            cover = self._covers[i]
-            cy = y0 + (row_h - cover.height) // 2
-            if selected:  # a white mat keeps the cover legible on the inverted bar
-                d.rectangle((PAD - 2, cy - 2, PAD + cover.width + 1, cy + cover.height + 1), fill=WHITE)
-            img.paste(cover, (PAD, cy))
-            tx0 = PAD + cover.width + 12
-            draw_text(d, ui, title, tx0, w - PAD, y0 + 16, fill=fg)
-            draw_text(d, small, author, tx0, w - PAD, y0 + 38, fill=fg)
-            progress = ctx.state.get_progress(str(self.books[i]))
-            if progress > 0.005:
-                bar_y = y0 + row_h - 18
-                draw_progress(d, tx0, w - PAD - 36, bar_y, 4, progress, fill=fg, rtl=text_is_rtl(title))
-                d.text((w - PAD, bar_y + 2), f"{round(progress * 100)}%", font=small.get(),
-                       fill=fg, anchor="rm")
+                d.rectangle((0, y, ctx.width, y + height - 1), fill=BLACK)
+            if i == 0 and self.has_card:
+                self._draw_card(img, d, i, y, height, fg, selected)
+            else:
+                self._draw_row(img, d, i, y, height, fg, selected)
+            y += height
         return img
+
+    def _paste_cover(self, img, d, i, size, x, y0, height, selected) -> None:
+        cover = self._cover(i, size)
+        cy = y0 + (height - cover.height) // 2
+        if selected:  # a white mat keeps the cover legible on the inverted bar
+            d.rectangle((x - 2, cy - 2, x + cover.width + 1, cy + cover.height + 1), fill=WHITE)
+        img.paste(cover, (x, cy))
+
+    def _draw_status(self, d, book: Path, title: str, x0: float, y: float, fg: int) -> None:
+        """New badge, progress bar with percent, or Finished mark."""
+        ctx, small, w = self.ctx, self.ctx.small, self.ctx.width
+        status = ctx.state.status(str(book))
+        if status == "reading":
+            progress = ctx.state.get_progress(str(book))
+            draw_progress(d, x0, w - PAD - 36, y, 4, progress, fill=fg, rtl=text_is_rtl(title))
+            d.text((w - PAD, y + 2), f"{round(progress * 100)}%", font=small.get(), fill=fg, anchor="rm")
+        elif status == "finished":
+            x = x0 + draw_icon(d, "check_circle", x0, y + 2, 16, fill=fg) + 4
+            d.text((x, y + 2), "Finished", font=small.get(Style.BOLD), fill=fg, anchor="lm")
+        else:
+            label_w = small.width("NEW", Style.BOLD)
+            d.rounded_rectangle((x0, y - 6, x0 + label_w + 10, y + 10), radius=3, outline=fg)
+            d.text((x0 + 5, y + 2), "NEW", font=small.get(Style.BOLD), fill=fg, anchor="lm")
+
+    def _draw_row(self, img, d, i, y0, height, fg, selected) -> None:
+        ui, small, w = self.ctx.ui_fonts, self.ctx.small, self.ctx.width
+        title, author = self.meta[i]
+        self._paste_cover(img, d, i, THUMB_SIZE, PAD, y0, height, selected)
+        tx0 = PAD + THUMB_SIZE[0] + 12
+        draw_text(d, ui, title, tx0, w - PAD, y0 + 16, fill=fg)
+        draw_text(d, small, author, tx0, w - PAD, y0 + 38, fill=fg)
+        self._draw_status(d, self.books[i], title, tx0, y0 + height - 18, fg)
+
+    def _draw_card(self, img, d, i, y0, height, fg, selected) -> None:
+        """Larger cover, "Continue reading", title, chapter and progress."""
+        ui, small, w, state = self.ctx.ui_fonts, self.ctx.small, self.ctx.width, self.ctx.state
+        title, _ = self.meta[i]
+        self._paste_cover(img, d, i, CARD_THUMB, PAD, y0, height, selected)
+        tx0 = PAD + CARD_THUMB[0] + 12
+        x = tx0 + draw_icon(d, "play_arrow", tx0 - 2, y0 + 11, 16, fill=fg) + 2
+        d.text((x, y0 + 11), "CONTINUE READING", font=small.get(Style.BOLD), fill=fg, anchor="lm")
+        lines = wrap_text(ui, title, w - PAD - tx0, 2)
+        for n, line in enumerate(lines):
+            draw_text(d, ui, line, tx0, w - PAD, y0 + 31 + n * 24, fill=fg)
+        chapter = state.get_chapter(str(self.books[i]))
+        if chapter:
+            draw_text(d, small, chapter, tx0, w - PAD, y0 + 31 + len(lines) * 24 + 4, fill=fg)
+        self._draw_status(d, self.books[i], title, tx0, y0 + height - 12, fg)
 
     def handle(self, button: Button) -> Screen | None:
         if not self.books:
@@ -234,7 +295,8 @@ class ReaderScreen(Screen):
     def _save_progress(self) -> None:
         if self.book and not self.book.empty and self.unsaved_turns:
             section, page = self.book.position
-            self.ctx.state.set_position(str(self.path), section, page, self.book.progress)
+            self.ctx.state.set_position(str(self.path), section, page, self.book.progress,
+                                        self.book.chapter_title)
             self.unsaved_turns = 0
 
     def close(self) -> None:
