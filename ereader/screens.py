@@ -193,6 +193,20 @@ def _draw_menu_rows(ctx: "AppContext", d: ImageDraw.ImageDraw, top: int,
         d.rectangle((w - 6, thumb_y, w - 3, thumb_y + thumb_h - 1), fill=BLACK)
 
 
+TOC_STEPS = (1, 5, 10, 25)   # how many rows up/down move in a long list; hold select to change
+
+
+def _jump(cursor: int, count: int, button: Button, step: int) -> int:
+    """UP/DOWN move a list cursor by `step` rows. With a step of 1 it wraps around;
+    with a bigger step it stops at the ends first (so you can't skip past them), and
+    pressing again at an end wraps to the other end."""
+    if button is Button.UP:
+        return count - 1 if cursor == 0 else max(cursor - step, 0)
+    if button is Button.DOWN:
+        return 0 if cursor == count - 1 else min(cursor + step, count - 1)
+    return cursor
+
+
 def _move(cursor: int, count: int, button: Button) -> int:
     """UP/DOWN move a list cursor, wrapping around."""
     if button is Button.UP:
@@ -765,12 +779,16 @@ class MenuScreen(Screen):
 
 
 class TocScreen(Screen):
-    """Table of contents. The first row goes back to the menu."""
+    """Table of contents. The first row goes back to the menu. Hold select to make
+    up/down jump 1, 5, 10 or 25 rows at a time, for books with many chapters."""
+
+    handles_long_press = True
 
     def __init__(self, ctx: AppContext, reader: ReaderScreen, menu: MenuScreen):
         self.ctx, self.reader, self.menu = ctx, reader, menu
         self.entries = reader.book.epub.toc
         self.cursor = 1 + reader.book.chapter_index  # start on the current chapter
+        self.step = 1
         self.full_refresh = True
 
     @property
@@ -787,8 +805,9 @@ class TocScreen(Screen):
         per, count = self._rows_per_page, len(self.entries) + 1
         start = (self.cursor // per) * per
         img = blank(ctx)
-        d, top, _ = list_frame(img, ctx.ui_fonts, "Contents", f"{start // per + 1}/{(count - 1) // per + 1}",
-                              icon="toc")
+        tag = f"jump {self.step}   " if self.step > 1 else ""
+        d, top, _ = list_frame(img, ctx.ui_fonts, "Contents", f"{tag}{start // per + 1}/{(count - 1) // per + 1}",
+                              icon="toc", labels=("Up", "Open · hold: jump size", "Down"), hint_fonts=ctx.small)
         ui, w, row_h = ctx.ui_fonts, ctx.width, self._row_h
         current = 1 + self.reader.book.chapter_index
         for row, i in enumerate(range(start, min(start + per, count))):
@@ -802,14 +821,18 @@ class TocScreen(Screen):
                 draw_icon(d, "arrow_back", PAD, mid, 20, fill=fg)
                 draw_text(d, ui, "Back", PAD + 26, w - PAD, mid, fill=fg)
             else:
-                if i == current:  # bookmark marks the chapter you're reading
-                    draw_icon(d, "bookmark", 2, mid, 18, fill=fg)
+                if i == current:  # an arrow marks the chapter you're reading (a bookmark means a bookmark)
+                    draw_icon(d, "play_arrow", 0, mid, 16, fill=fg)
                 draw_text(d, ui, self.entries[i - 1].title, PAD + 8, w - PAD, mid, fill=fg)
         return img
 
     def handle(self, button: Button) -> Screen | None:
+        if button is Button.SELECT_LONG:  # hold select: change how far up/down jump
+            self.step = TOC_STEPS[(TOC_STEPS.index(self.step) + 1) % len(TOC_STEPS)]
+            self.full_refresh = False
+            return None
         if button is not Button.SELECT:
-            self.cursor = _move(self.cursor, len(self.entries) + 1, button)
+            self.cursor = _jump(self.cursor, len(self.entries) + 1, button, self.step)
             self.full_refresh = False
             return None
         if self.cursor == 0:
