@@ -2,6 +2,8 @@
 
 A DIY e-paper ebook reader for the original Raspberry Pi Zero W (ARMv6, 512 MB RAM), written in Python.
 
+**Every command, URL and troubleshooting tip is in [COMMANDS.md](COMMANDS.md).**
+
 The structure is modeled on [atomic14's ESP32 ePub reader](https://github.com/atomic14/diy-esp32-epub-reader) (MIT license): the same pipeline, the same three-button controls, and the same split between app logic and hardware. No code was copied from it; this is an independent Python version for Linux hardware. [PiBook](https://github.com/rolohaun/PiBook) is a second reference for Pi- and Waveshare-specific parts.
 
 ## How it fits together
