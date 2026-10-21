@@ -14,7 +14,7 @@ from __future__ import annotations
 import unicodedata
 
 from .blocks import Block, ImageBlock, TextBlock, Word
-from .fonts import Fonts
+from .fonts import Fonts, has_arabic
 from .page import Page, PlacedImage, PlacedWord
 
 MARGIN = 20          # pixels around the page edge
@@ -198,13 +198,14 @@ def paginate(blocks: list[Block], fonts: Fonts, width: int, height: int,
                 new_page()
             elif gap:
                 y += gap
+        pad = fonts.arabic_pad if any(has_arabic(w.text) for w in block.words) else 0
         for i, line in enumerate(lines):
-            if y + lh > bottom:
+            if y + lh + pad > bottom:
                 new_page()
-            page.elements.extend(_place_line(line, fonts, y, left, right, rtl,
+            page.elements.extend(_place_line(line, fonts, y + pad * 2 // 3, left, right, rtl,
                                              justify=not center and i < len(lines) - 1,
                                              center=center))
-            y += lh
+            y += lh + pad
         y += PARAGRAPH_GAP * (2 if block.is_heading else 1)
 
     if page.elements:

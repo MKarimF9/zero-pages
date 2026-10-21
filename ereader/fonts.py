@@ -41,9 +41,12 @@ DEJAVU_FILES = {
     Style.BOLD | Style.ITALIC: "DejaVuSerif-BoldItalic.ttf",
 }
 
-# Arabic always uses Noto Naskh Arabic (bundled). The rest are fallbacks, tried
-# in order, (regular, bold) per entry, if the bundled files are missing.
+# Arabic always uses Amiri Quran (bundled), which draws the vowel and Quranic
+# stop marks properly. It has no bold, so bold Arabic (headings) uses Noto Naskh
+# Arabic Bold. The rest are fallbacks, tried in order, (regular, bold) per
+# entry, if the bundled files are missing.
 ARABIC_FONTS = [
+    (str(ASSETS_DIR / "AmiriQuran-Regular.ttf"), str(ASSETS_DIR / "NotoNaskhArabic-Bold.ttf")),
     (str(ASSETS_DIR / "NotoNaskhArabic-Regular.ttf"), str(ASSETS_DIR / "NotoNaskhArabic-Bold.ttf")),
     ("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
      "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf"),
@@ -59,6 +62,11 @@ ARABIC_FONTS = [
 _ARABIC_RANGES = ((0x0600, 0x06FF), (0x0750, 0x077F), (0x08A0, 0x08FF),
                   (0xFB50, 0xFDFF), (0xFE70, 0xFEFF))
 
+
+# Vowelled Arabic at the Latin size looks small and thin beside it, so it is drawn
+# bigger, with room above and below the line for the marks.
+ARABIC_SCALE = 1.2
+ARABIC_PAD = 0.5   # extra line height for Arabic blocks, as a fraction of the font size
 
 WIDTH_CACHE_MAX = 20000  # entries; a few MB at most
 
@@ -81,6 +89,7 @@ def _load_arabic(size: int) -> dict[bool, ImageFont.FreeTypeFont] | None:
     """{bold: font} for the first installed Arabic font, or None."""
     for regular, bold in ARABIC_FONTS:
         try:
+            size = round(size * ARABIC_SCALE)
             return {False: ImageFont.truetype(regular, size),
                     True: ImageFont.truetype(bold, size)}
         except OSError:
@@ -131,6 +140,11 @@ class Fonts:
             return int(self._fonts[Style.NORMAL].getmetrics()[0])
         except AttributeError:  # Pillow's old bitmap fallback font
             return int(self.size * 0.8)
+
+    @property
+    def arabic_pad(self) -> int:
+        """Extra height a line of Arabic gets, two thirds above its words, one third below."""
+        return int(self.size * ARABIC_PAD)
 
     @property
     def line_height(self) -> int:
