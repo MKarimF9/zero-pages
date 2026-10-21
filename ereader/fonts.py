@@ -60,6 +60,9 @@ _ARABIC_RANGES = ((0x0600, 0x06FF), (0x0750, 0x077F), (0x08A0, 0x08FF),
                   (0xFB50, 0xFDFF), (0xFE70, 0xFEFF))
 
 
+WIDTH_CACHE_MAX = 20000  # entries; a few MB at most
+
+
 def has_arabic(text: str) -> bool:
     return any(lo <= ord(ch) <= hi for ch in text for lo, hi in _ARABIC_RANGES)
 
@@ -99,6 +102,7 @@ class Fonts:
         self.family = family if family in FAMILIES else DEFAULT_FAMILY
         self._fonts = {style: _load_latin(self.family, style, size) for style in STYLE_SUFFIX}
         self._arabic = _load_arabic(size)  # None: Arabic falls back to the Latin font
+        self._widths: dict[tuple[Style, str], float] = {}
 
     def get(self, style: Style = Style.NORMAL, text: str = ""):
         """Font for `style`. Pass the text too and Arabic gets the Arabic font
@@ -108,8 +112,15 @@ class Fonts:
         return self._fonts.get(style, self._fonts[Style.NORMAL])
 
     def width(self, text: str, style: Style = Style.NORMAL) -> float:
-        """Pixel width of `text` when drawn in `style`."""
-        return self.get(style, text).getlength(text)
+        """Pixel width of `text` when drawn in `style`. Remembered: books repeat
+        the same words, and measuring dominates layout time on a Pi Zero."""
+        key = (style, text)
+        w = self._widths.get(key)
+        if w is None:
+            if len(self._widths) >= WIDTH_CACHE_MAX:
+                self._widths.clear()  # cheap bound on memory
+            w = self._widths[key] = self.get(style, text).getlength(text)
+        return w
 
     @property
     def baseline(self) -> int:
