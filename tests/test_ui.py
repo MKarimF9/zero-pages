@@ -3,7 +3,8 @@ import json
 
 from ereader.controls import Button as B
 from ereader.fonts import Fonts
-from ereader.screens import AppContext, LibraryScreen, MenuScreen, ReaderScreen, TocScreen
+from ereader.screens import (AppContext, LibraryScreen, MenuScreen, ReaderScreen, TocScreen,
+                             initial_screen)
 from ereader.state import ReadingState
 from tests.make_epub import make_epub
 
@@ -100,3 +101,18 @@ def test_library_puts_last_read_first_and_shows_progress(tmp_path):
     lib = LibraryScreen(ctx)
     assert lib.books[0].name == "test.epub" and state.get_progress(str(lib.books[0])) == 0.5
     lib.render()
+
+
+def test_opens_last_book_straight_away(tmp_path):
+    ctx, state = make_ctx(tmp_path)
+    assert isinstance(initial_screen(ctx), LibraryScreen)       # nothing read yet
+    state.set_position(str(ctx.books_dir / "test.epub"), 1, 0, 0.5)
+    screen = initial_screen(ctx)
+    assert isinstance(screen, ReaderScreen) and screen.book.position == (1, 0)
+    assert isinstance(initial_screen(ctx, "library"), LibraryScreen)  # --start library
+
+
+def test_missing_last_book_falls_back_to_library(tmp_path):
+    ctx, state = make_ctx(tmp_path)
+    state.set_position(str(ctx.books_dir / "deleted.epub"), 3, 1, 0.2)
+    assert isinstance(initial_screen(ctx), LibraryScreen)

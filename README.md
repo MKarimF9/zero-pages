@@ -73,7 +73,7 @@ python3 main.py --books ~/books
 
 Keys: `w`/`k` = up, `s`/`j` = down, space/enter = select, `q` = quit.
 
-Using it (three buttons only):
+Using it (three buttons only). The app opens the book you were last reading; pass `--start library` to open the library instead.
 - **Library:** up/down pick a book (the one you read last is first, with a progress bar), select opens it.
 - **Reading:** down = next page, up = previous page, **select = menu**.
 - **Menu:** Resume, Table of contents, Font size (select cycles 18-32 and remembers it), Back to library.
