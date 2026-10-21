@@ -29,6 +29,7 @@ from .layout import MARGIN, text_is_rtl
 from .library import BookIndex
 from .page import Page, PlacedImage, PlacedWord
 from .state import ReadingState
+from .upload import PORT, UploadServer, local_ip
 from .ui import (BLACK, PAD, STATUS_BAR_HEIGHT, WHITE, draw_icon, draw_progress,
                  draw_text, list_frame, wrap_text)
 
@@ -335,7 +336,8 @@ class LibraryScreen(Screen):
 
 
 class LibraryOptionsScreen(Screen):
-    """Sort and filter the library, and choose the sleep screen. Choices are remembered."""
+    """Sort and filter the library, choose the sleep screen, add books over Wi-Fi.
+    Choices are remembered."""
 
     def __init__(self, ctx: AppContext):
         self.ctx = ctx
@@ -348,6 +350,7 @@ class LibraryOptionsScreen(Screen):
         return [("sort", "sort", "Sort by", SORTS[state.get_setting("library_sort", "recent")]),
                 ("filter", "filter_list", "Show", FILTERS[state.get_setting("library_filter", "all")]),
                 ("sleep", "bedtime", "Sleep screen", SLEEP_SCREENS[state.get_setting("sleep_screen", "cover")]),
+                ("upload", "cloud_upload", "Add books over Wi-Fi", ""),
                 ("back", "arrow_back", "Back to library", "")]
 
     def render(self) -> Image.Image:
@@ -369,10 +372,68 @@ class LibraryOptionsScreen(Screen):
             state.set_setting("library_filter", _next(FILTERS, state.get_setting("library_filter", "all")))
         elif key == "sleep":
             state.set_setting("sleep_screen", _next(SLEEP_SCREENS, state.get_setting("sleep_screen", "cover")))
+        elif key == "upload":
+            return UploadScreen(self.ctx)
         else:
             return LibraryScreen(self.ctx)
         self.full_refresh = False
         return None
+
+
+class UploadScreen(Screen):
+    """Add books over Wi-Fi. The upload server runs only while this screen is
+    open: it shows the address and a PIN to type on the page; select stops it."""
+
+    def __init__(self, ctx: AppContext, port: int = PORT):
+        self.ctx = ctx
+        self.server: UploadServer | None = None
+        self.ip = local_ip()
+        self.error = ""
+        self.full_refresh = True
+        if self.ip is None:
+            self.error = "No Wi-Fi connection found."
+        else:
+            try:
+                self.server = UploadServer(ctx.books_dir, port=port)  # a fresh random PIN each time
+                self.server.start()
+            except OSError as e:
+                self.error = f"Couldn't start the server: {e.strerror or e}"
+
+    @property
+    def url(self) -> str:
+        return f"http://{self.ip}:{self.server.port}" if self.server else ""
+
+    def render(self) -> Image.Image:
+        ctx, ui, small = self.ctx, self.ctx.ui_fonts, self.ctx.small
+        img = blank(ctx)
+        d, top, _ = list_frame(img, ui, "Add books", icon="wifi" if self.server else "wifi_off",
+                               labels=("Refresh", "Done", "Refresh"))
+        w, x = ctx.width, PAD
+        if self.error:
+            draw_text(d, ui, self.error, x, w - x, top + 30, align="left")
+            draw_text(d, small, "Connect the Pi to Wi-Fi, then try again.", x, w - x, top + 60, align="left")
+            return img
+        draw_text(d, small, "On your phone or computer (same Wi-Fi), open:", x, w - x, top + 16, align="left")
+        draw_text(d, ui, self.url, x, w - x, top + 44, Style.BOLD, align="left")
+        draw_text(d, small, "and type this PIN:", x, w - x, top + 80, align="left")
+        pin_font = ctx.fonts
+        d.text((x, top + 112), "  ".join(self.server.pin), font=pin_font.get(Style.BOLD), fill=BLACK, anchor="lm")
+        added = len(self.server.added)
+        text = f"Added this time: {added}" if added else "Waiting for books..."
+        draw_text(d, small, text, x, w - x, top + 150, align="left")
+        return img
+
+    def handle(self, button: Button) -> Screen | None:
+        if button is Button.SELECT:
+            self.close()
+            return LibraryScreen(self.ctx)
+        self.full_refresh = False  # up/down just redraw, to show the new count
+        return None
+
+    def close(self) -> None:
+        if self.server:
+            self.server.stop()
+            self.server = None
 
 
 # --------------------------------------------------------------------------- Reader
