@@ -26,7 +26,8 @@ class Controls(ABC):
 
 
 class KeyboardControls(Controls):
-    """w/k = up, s/j = down, space/enter = select, m = hold select, q = quit."""
+    """w/k or Up arrow = up, s/j or Down arrow = down, space/enter = select,
+    m = hold select, q = quit."""
 
     KEYMAP = {
         "w": Button.UP, "k": Button.UP,
@@ -34,28 +35,52 @@ class KeyboardControls(Controls):
         " ": Button.SELECT, "\r": Button.SELECT, "\n": Button.SELECT,
         "m": Button.SELECT_LONG,
         "q": Button.QUIT, "\x03": Button.QUIT,  # \x03 = Ctrl+C in raw mode
+        # Arrow keys arrive as three characters: ESC [ A (or ESC O A in some terminals)
+        "\x1b[A": Button.UP, "\x1bOA": Button.UP,
+        "\x1b[B": Button.DOWN, "\x1bOB": Button.DOWN,
     }
+
+    def __init__(self) -> None:
+        self._buffer = ""  # keys read but not yet handed out (fast typing, arrow sequences)
 
     def wait(self) -> Button:
         while True:
-            ch = self._getch()
-            if ch == "":
+            key = self._next_key()
+            if key is None:
                 return Button.QUIT  # input closed
-            if ch in self.KEYMAP:
-                return self.KEYMAP[ch]
+            if key in self.KEYMAP:
+                return self.KEYMAP[key]  # anything else (other keys, Home, F-keys...) is ignored
+
+    def _next_key(self) -> str | None:
+        """One key from the buffer: a single character, or a whole arrow-key sequence."""
+        if not self._buffer:
+            self._buffer = self._read()
+            if not self._buffer:
+                return None
+        if self._buffer[:2] in ("\x1b[", "\x1bO") and len(self._buffer) >= 3:
+            key, self._buffer = self._buffer[:3], self._buffer[3:]
+        else:
+            key, self._buffer = self._buffer[0], self._buffer[1:]
+        return key
 
     @staticmethod
-    def _getch() -> str:
-        """Read one keypress without waiting for Enter."""
+    def _read() -> str:
+        """Read whatever the user typed, without waiting for Enter. Several
+        characters can come back at once (an arrow key is three). "" = input closed."""
         if not sys.stdin.isatty():
             return sys.stdin.read(1)
+        import os
+        import select
         import termios
         import tty
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
-            return sys.stdin.read(1)
+            data = os.read(fd, 32)  # straight from the terminal: no hidden Python buffer
+            if data == b"\x1b" and select.select([fd], [], [], 0.05)[0]:
+                data += os.read(fd, 32)  # the rest of an arrow sequence that arrived a moment later
+            return data.decode("utf-8", errors="ignore")
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
 

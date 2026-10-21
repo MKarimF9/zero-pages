@@ -71,7 +71,7 @@ cd ~/pi-ereader
 python3 main.py --books ~/books
 ```
 
-Keys: `w`/`k` = up, `s`/`j` = down, space/enter = select, `m` = hold select, `q` = quit.
+Keys: `w`/`k` or the Up arrow = up, `s`/`j` or the Down arrow = down, space/enter = select, `m` = hold select, `q` = quit.
 
 Using it (three buttons only). The app opens the book you were last reading; pass `--start library` to open the library instead.
 - **Library:** up/down pick a book, select opens it. Your current book is a larger *Continue reading* card on top. **Hold select** (keyboard: `m`) for options: sort by recent, title or author, show all, reading, new or finished books, and choose the sleep screen.
