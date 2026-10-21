@@ -562,10 +562,10 @@ def draw_page(ctx: AppContext, page: Page, status: Status, load_image=None) -> I
     """load_image(src, width, height) -> 1-bit picture or None (LazyBook.image)."""
     img = blank(ctx)
     d = ImageDraw.Draw(img)
-    base = ctx.fonts.baseline
     for el in page.elements:
         if isinstance(el, PlacedWord):
-            d.text((el.x, el.y + base), el.word.text, font=ctx.fonts.get(el.word.style, el.word.text),
+            fonts = ctx.fonts.scaled(el.size) if el.size else ctx.fonts  # a shrunk verse has its own size
+            d.text((el.x, el.y + fonts.baseline), el.word.text, font=fonts.get(el.word.style, el.word.text),
                    fill=BLACK, anchor="ls")  # same baseline for Arabic and Latin words
         elif isinstance(el, PlacedImage):
             picture = load_image(el.src, el.width, el.height) if load_image else None

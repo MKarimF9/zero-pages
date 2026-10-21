@@ -15,6 +15,7 @@ class PlacedWord:
     x: int
     y: int
     word: Word
+    size: int = 0   # font size if smaller than the page's (a verse shrunk to fit), else 0
 
 
 @dataclass

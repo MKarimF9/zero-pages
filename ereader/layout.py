@@ -19,6 +19,7 @@ from .page import Page, PlacedImage, PlacedWord
 
 MARGIN = 20          # pixels around the page edge
 PARAGRAPH_GAP = 8    # extra pixels between blocks
+MIN_VERSE_SIZE = 14  # a verse too tall for a page is shrunk to fit, but not below this font size
 MAX_STRETCH = 1.6    # justify only if no gap grows beyond this many space widths
 IMAGE_PLACEHOLDER_HEIGHT = 120  # until you implement real image sizing
 
@@ -78,6 +79,10 @@ def visual_order(line: list[Word], rtl: bool) -> list[list[Word]]:
 
 # ------------------------------------------------------------------ layout
 
+def _is_arabic_block(block: TextBlock) -> bool:
+    return any(has_arabic(w.text) for w in block.words)
+
+
 def _line_width(line: list[Word], fonts: Fonts) -> float:
     return (sum(fonts.width(w.text, w.style) for w in line)
             + sum(fonts.width(" ", w.style) for w in line[:-1]))
@@ -107,7 +112,8 @@ def break_lines(words: list[Word], fonts: Fonts, max_width: int) -> list[list[Wo
 
 
 def _place_line(line: list[Word], fonts: Fonts, y: int, left: int, right: int,
-                rtl: bool, justify: bool = False, center: bool = False) -> list[PlacedWord]:
+                rtl: bool, justify: bool = False, center: bool = False,
+                size: int = 0) -> list[PlacedWord]:
     """Position one line: flush left for LTR, flush right for RTL, centered
     for headings. With justify, spread the extra space over the gaps (unless
     that would leave gaps ugly-wide, then it stays ragged)."""
@@ -129,7 +135,7 @@ def _place_line(line: list[Word], fonts: Fonts, y: int, left: int, right: int,
         x = left
     placed = []
     for i, word in enumerate(flat):
-        placed.append(PlacedWord(round(x), y, word))
+        placed.append(PlacedWord(round(x), y, word, size))
         x += fonts.width(word.text, word.style)
         if i < len(flat) - 1:
             x += fonts.width(" ", word.style) + extra_per_gap
@@ -168,7 +174,41 @@ def paginate(blocks: list[Block], fonts: Fonts, width: int, height: int,
             pages.append(page)
         page, y = Page(), margin
 
-    for block in blocks:
+    line_cache: dict[int, list[list[Word]]] = {}
+
+    def lines_of(block: TextBlock) -> list[list[Word]]:
+        if id(block) not in line_cache:
+            line_cache[id(block)] = break_lines(block.words, fonts, usable_width)
+        return line_cache[id(block)]
+
+    def put_lines(block: TextBlock, lines: list[list[Word]], f: Fonts, size: int) -> None:
+        nonlocal y
+        pad = f.arabic_pad if _is_arabic_block(block) else 0
+        rtl = is_rtl(block.words)
+        center = block.is_heading or _is_ornament(block.words)
+        for i, line in enumerate(lines):
+            if y + f.line_height + pad > bottom:
+                new_page()
+            page.elements.extend(_place_line(line, f, y + pad * 2 // 3, left, right, rtl,
+                                             justify=not center and i < len(lines) - 1,
+                                             center=center, size=size))
+            y += f.line_height + pad
+        y += PARAGRAPH_GAP * (2 if block.is_heading else 1)
+
+    def fitting_size(arabic: TextBlock, english: TextBlock) -> int:
+        """Largest font size under the page's at which the pair fits one page, or 0."""
+        for size in range(fonts.size - 2, MIN_VERSE_SIZE - 1, -2):
+            f = fonts.scaled(size)
+            a = break_lines(arabic.words, f, usable_width)
+            e = break_lines(english.words, f, usable_width)
+            if len(a) * (f.line_height + f.arabic_pad) + PARAGRAPH_GAP + len(e) * f.line_height <= bottom - margin:
+                return size
+        return 0
+
+    skip = -1
+    for index, block in enumerate(blocks):
+        if index == skip:
+            continue
         if isinstance(block, ImageBlock):
             if block.size:  # a real picture: scaled to fit the page, centered
                 w, h = fit_size(block.size, usable_width, bottom - margin)
@@ -185,11 +225,30 @@ def paginate(blocks: list[Block], fonts: Fonts, width: int, height: int,
             y += IMAGE_PLACEHOLDER_HEIGHT + PARAGRAPH_GAP
             continue
 
-        lines = break_lines(block.words, fonts, usable_width)
+        lines = lines_of(block)
         if not lines:
             continue
-        rtl = is_rtl(block.words)
-        center = block.is_heading or _is_ornament(block.words)
+        pad = fonts.arabic_pad if _is_arabic_block(block) else 0
+        # An Arabic verse and its translation stay on one page: if the pair doesn't fit
+        # in what is left of this page but would fit on a fresh one, start a new page.
+        # If it is too tall for any page at this size it is shrunk (down to MIN_VERSE_SIZE)
+        # to fit on one; a pair that is still too tall just flows over pages.
+        following = blocks[index + 1] if index + 1 < len(blocks) else None
+        if (pad and not block.is_heading and isinstance(following, TextBlock) and not following.is_heading
+                and not _is_arabic_block(following)):
+            rest = lines_of(following)
+            need = len(lines) * (lh + pad) + PARAGRAPH_GAP + len(rest) * lh
+            if need <= bottom - margin:
+                if y + need > bottom:
+                    new_page()
+            elif size := fitting_size(block, following):
+                # too tall for a page at this size: shrink the pair so it fits on one
+                new_page()
+                f = fonts.scaled(size)
+                put_lines(block, break_lines(block.words, f, usable_width), f, size)
+                put_lines(following, break_lines(following.words, f, usable_width), f, size)
+                skip = index + 1
+                continue
         if block.is_heading:
             # Space above a heading (not at the top of a page), and don't strand
             # it at the bottom: it needs room for its lines plus one more line.
@@ -198,15 +257,7 @@ def paginate(blocks: list[Block], fonts: Fonts, width: int, height: int,
                 new_page()
             elif gap:
                 y += gap
-        pad = fonts.arabic_pad if any(has_arabic(w.text) for w in block.words) else 0
-        for i, line in enumerate(lines):
-            if y + lh + pad > bottom:
-                new_page()
-            page.elements.extend(_place_line(line, fonts, y + pad * 2 // 3, left, right, rtl,
-                                             justify=not center and i < len(lines) - 1,
-                                             center=center))
-            y += lh + pad
-        y += PARAGRAPH_GAP * (2 if block.is_heading else 1)
+        put_lines(block, lines, fonts, 0)
 
     if page.elements:
         pages.append(page)
