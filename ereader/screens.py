@@ -434,7 +434,8 @@ class ReaderScreen(Screen):
         try:
             # the status bar owns the bottom STATUS_BAR_HEIGHT pixels
             self.book = LazyBook(path, ctx.fonts, ctx.width, ctx.height - STATUS_BAR_HEIGHT,
-                                 position=ctx.state.get_position(str(path)), bottom_margin=6)
+                                 position=ctx.state.get_position(str(path)), bottom_margin=6,
+                                 chunk=ctx.state.get_chunk(str(path)))
         except NotImplementedError as e:
             self.error = str(e)  # tells you which function to write next
         except Exception as e:
@@ -449,7 +450,7 @@ class ReaderScreen(Screen):
         if self.book and not self.book.empty and self.unsaved_turns:
             section, page = self.book.position
             self.ctx.state.set_position(str(self.path), section, page, self.book.progress,
-                                        self.book.chapter_title)
+                                        self.book.chapter_title, self.book.chunk)
             self.unsaved_turns = 0
 
     def close(self) -> None:
