@@ -42,7 +42,7 @@ def test_menu_resume_and_library(tmp_path):
     menu = reader.handle(B.SELECT)
     assert menu.handle(B.SELECT) is reader and reader.full_refresh  # Resume clears ghosting
     menu = reader.handle(B.SELECT)
-    menu.cursor = 4  # Back to library
+    menu.cursor = 5  # Back to library
     assert isinstance(menu.handle(B.SELECT), LibraryScreen) and reader.book is None
 
 

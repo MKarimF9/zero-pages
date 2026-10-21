@@ -36,6 +36,7 @@ ICONS = {
     "arrow_back": "\ue5c4",
     "bookmark": "\ue8e7",
     "sort": "\ue164",
+    "push_pin": "\uf10d",
     "delete": "\ue92e",
     "wifi": "\ue63e",
     "wifi_off": "\ue648",

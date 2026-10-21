@@ -36,7 +36,7 @@ def test_menu_rows_fit_on_the_small_screen(tmp_path):
     reader = LibraryScreen(ctx).handle(B.SELECT)
     menu = reader.handle(B.SELECT)
     n = len(menu._items())
-    assert n == 6
+    assert n == 7
     top = ctx.ui_fonts.line_height + 8 + 2
     footer_top = 300 - (ctx.ui_fonts.line_height + 8) - 2
     assert 6 + n * menu_row_height(ctx, n, top) <= footer_top - top           # every row is above the footer

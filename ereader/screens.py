@@ -175,12 +175,20 @@ class LibraryScreen(Screen):
         if self.filter != "all":
             infos = [b for b in infos if ctx.state.status(str(b.path)) == self.filter]
         infos = sort_books(infos, self.sort, ctx.state)
+        pin_order = {b: i for i, b in enumerate(ctx.state.get_pinned())}   # pinned books first, in pin order
+        infos.sort(key=lambda b: pin_order.get(str(b.path), len(pin_order)))  # (stable: the rest keep their order)
+        self.pinned_count = sum(str(b.path) in pin_order for b in infos)
         self.infos = infos
         self.books = [b.path for b in infos]
         self.meta = [(b.title, b.author) for b in infos]  # (title, author)
-        # the last-read book becomes the card (only when sorted by recent), unless it's finished
-        self.has_card = self.sort == "recent" and bool(infos) and str(infos[0].path) == ctx.state.last_book \
-            and ctx.state.status(str(infos[0].path)) == "reading"
+        # The last-read book becomes the "Continue reading" card (only when sorted by recent, and
+        # unless it's finished) if it is the first of the pinned books or the first of the rest.
+        self.card_index: int | None = None
+        last = ctx.state.last_book
+        if self.sort == "recent" and last:
+            for i in {0, self.pinned_count}:
+                if i < len(infos) and str(infos[i].path) == last and ctx.state.status(last) == "reading":
+                    self.card_index = i
         self.cursor = 0
         self.full_refresh = True
         self._covers: dict[tuple[int, tuple[int, int]], Image.Image] = {}  # made when first shown
@@ -191,8 +199,12 @@ class LibraryScreen(Screen):
     def _row_h(self) -> int:
         return THUMB_SIZE[1] + 8   # the cover sets the row height
 
+    @property
+    def has_card(self) -> bool:
+        return self.card_index is not None
+
     def _height(self, i: int) -> int:
-        return CARD_HEIGHT if (i == 0 and self.has_card) else self._row_h
+        return CARD_HEIGHT if i == self.card_index else self._row_h
 
     def _pages(self) -> list[tuple[int, int]]:
         """[(first, end)] book indexes for each screenful, filled greedily."""
@@ -235,7 +247,7 @@ class LibraryScreen(Screen):
             fg = WHITE if selected else BLACK
             if selected:  # inverted bar = the e-paper version of a highlight
                 d.rectangle((0, y, ctx.width, y + height - 1), fill=BLACK)
-            if i == 0 and self.has_card:
+            if i == self.card_index:
                 self._draw_card(img, d, i, y, height, fg, selected)
             else:
                 self._draw_row(img, d, i, y, height, fg, selected)
@@ -282,6 +294,17 @@ class LibraryScreen(Screen):
             d.rounded_rectangle((left, y - 6, left + label_w + 10, y + 10), radius=3, outline=fg)
             d.text((left + 5, y + 2), "NEW", font=small.get(Style.BOLD), fill=fg, anchor="lm")
 
+    def _pin_mark(self, d, i: int, y0: int, x0: int, x1: int, rtl: bool, fg: int) -> tuple[int, int]:
+        """Draw the pin on a pinned book's row (at the text's far end) and give back
+        the text area without the space it takes."""
+        if not self.ctx.state.is_pinned(str(self.books[i])):
+            return x0, x1
+        if rtl:
+            draw_icon(d, "push_pin", x0, y0 + 14, 16, fill=fg)
+            return x0 + 20, x1
+        draw_icon(d, "push_pin", x1 - 16, y0 + 14, 16, fill=fg)
+        return x0, x1 - 20
+
     def _draw_row(self, img, d, i, y0, height, fg, selected) -> None:
         ui, small = self.ctx.ui_fonts, self.ctx.small
         title, author = self.meta[i]
@@ -289,6 +312,7 @@ class LibraryScreen(Screen):
         align = "right" if rtl else "left"
         cover_x, x0, x1 = self._columns(THUMB_SIZE[0], rtl)
         self._paste_cover(img, d, i, THUMB_SIZE, cover_x, y0, height, selected)
+        x0, x1 = self._pin_mark(d, i, y0, x0, x1, rtl, fg)
         lines = wrap_text(ui, title, x1 - x0, 2)  # long titles take two lines, then "..."
         if len(lines) == 1:
             draw_text(d, ui, lines[0], x0, x1, y0 + 16, fill=fg, align=align)
@@ -309,6 +333,7 @@ class LibraryScreen(Screen):
         align = "right" if rtl else "left"
         cover_x, x0, x1 = self._columns(CARD_THUMB[0], rtl)
         self._paste_cover(img, d, i, CARD_THUMB, cover_x, y0, height, selected)
+        x0, x1 = self._pin_mark(d, i, y0, x0, x1, rtl, fg)
         label = "CONTINUE READING"
         label_w = small.width(label, Style.BOLD)
         lx = x1 - (label_w + 18) if rtl else x0 - 2
@@ -608,6 +633,8 @@ class MenuScreen(Screen):
             items.append(("toc", "toc", "Table of contents", ""))
         items.append(("family", "text_fields", "Font", self.ctx.fonts.family))
         items.append(("font", "format_size", "Font size", str(self.ctx.fonts.size)))
+        pinned = self.ctx.state.is_pinned(str(self.reader.path))
+        items.append(("pin", "push_pin", "Unpin from top" if pinned else "Pin to top", ""))
         items.append(("library", "local_library", "Back to library", ""))
         items.append(("delete", "delete", "Delete this book", ""))  # last, and asks first
         return items
@@ -634,6 +661,11 @@ class MenuScreen(Screen):
             return TocScreen(self.ctx, self.reader, self)
         if key in ("family", "font"):
             self._change_font(next_family=key == "family")
+            self.full_refresh = False
+            return None
+        if key == "pin":
+            path = str(self.reader.path)
+            self.ctx.state.set_pinned(path, not self.ctx.state.is_pinned(path))
             self.full_refresh = False
             return None
         if key == "delete":

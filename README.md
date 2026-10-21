@@ -80,7 +80,7 @@ Using it (three buttons only). The app opens the book you were last reading; pas
 - **Covers and status:** each book shows its cover (books without one get a generated cover with the title), and either a NEW badge, a progress bar with percent, or a Finished mark. Covers are shrunk and dithered once, then cached in `~/.pi-ereader/covers`.
 - **Sleep screen:** after 60 seconds idle the e-paper shows the current book's cover, then powers down (the image stays with no power). In the library options you can switch it to *Page* to leave the current page instead. In the PNG preview, quitting writes `preview/sleep.png` so you can see it.
 - **Reading:** down = next page, up = previous page, **select = menu**.
-- **Menu:** Resume, Table of contents, Font (Literata, Noto Serif or Charis SIL), Font size (select cycles 18-32 and remembers it), Back to library, and **Delete this book**. Delete asks first ("Keep the book" is selected by default), then removes the file, your saved place, and its cached covers and pictures.
+- **Menu:** Resume, Table of contents, Font (Literata, Noto Serif or Charis SIL), Font size (select cycles 18-32 and remembers it), Pin to top / Unpin, Back to library, and **Delete this book**. Delete asks first ("Keep the book" is selected by default), then removes the file, your saved place, and its cached covers and pictures.
 - **Status bar** under each page: progress bar, chapter title, page in chapter, percent read. Right-to-left books are mirrored.
 
 **Terminal 2** (SSH into the Pi), the live preview server:
@@ -107,6 +107,10 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 5. Run it: `python3 main.py --books ~/books --display epaper --controls gpio`. The screen size comes from the panel; the keyboard and PNG options still work.
 
 The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a full refresh. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
+
+## Pinned books
+
+**Pin to top** in the reader menu keeps a book above all the others in the library (a pin icon marks it), whatever the sort order, with several pins in the order you pinned them. Pin the Quran, or whatever you open every day, and it never gets buried. The *Continue reading* card still goes to the book you last read: first if that book is pinned, otherwise right below the pinned ones.
 
 ## Headings
 
