@@ -1,0 +1,20 @@
+# Install:
+#   sed -i 's/youruser/<your pi username>/g' deploy/pi-ereader.service
+#   sudo cp deploy/pi-ereader.service /etc/systemd/system/
+#   sudo systemctl enable --now pi-ereader
+# Logs: journalctl -u pi-ereader -f
+[Unit]
+Description=pi-ereader e-paper book reader
+After=multi-user.target
+
+[Service]
+User=youruser
+WorkingDirectory=/home/youruser/pi-ereader
+ExecStart=/usr/bin/python3 /home/youruser/pi-ereader/main.py --books /home/youruser/books --display epaper --controls gpio
+Restart=on-failure
+RestartSec=5
+# gives main.py time to save progress and sleep the panel (it takes ~2s)
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

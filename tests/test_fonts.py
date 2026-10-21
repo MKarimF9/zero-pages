@@ -1,0 +1,40 @@
+"""Fonts. Run: python3 -m pytest tests/test_fonts.py -v"""
+from ereader.blocks import Style
+from ereader.fonts import ARABIC_FONTS, ASSETS_DIR, FAMILIES, Fonts, has_arabic
+
+TEXT = "The quick brown fox jumps over the lazy dog"
+ARABIC = "بسم الله الرحمن الرحيم"
+
+
+def test_bundled_files_exist():
+    for prefix in FAMILIES.values():
+        for style in ("Regular", "Bold", "Italic", "BoldItalic"):
+            assert (ASSETS_DIR / f"{prefix}-{style}.ttf").exists(), (prefix, style)
+    assert (ASSETS_DIR / "NotoNaskhArabic-Regular.ttf").exists()
+
+
+def test_families_are_really_different_fonts():
+    widths = {name: Fonts(22, name).width(TEXT) for name in FAMILIES}
+    assert len(set(widths.values())) == len(FAMILIES), widths
+    for name in FAMILIES:  # bold is wider than regular in every family
+        f = Fonts(22, name)
+        assert f.width(TEXT, Style.BOLD) > f.width(TEXT)
+
+
+def test_unknown_family_falls_back_to_default():
+    assert Fonts(22, "Comic Sans").family == "Literata"
+
+
+def test_arabic_uses_noto_naskh_in_every_family():
+    assert has_arabic(ARABIC) and not has_arabic(TEXT)
+    widths = {Fonts(22, name).width(ARABIC) for name in FAMILIES}
+    assert len(widths) == 1                       # same Arabic font whatever the Latin one
+    assert Fonts(22).get(Style.NORMAL, ARABIC) is not Fonts(22).get(Style.NORMAL, TEXT)
+    assert ARABIC_FONTS[0][0].endswith("NotoNaskhArabic-Regular.ttf")
+
+
+def test_arabic_word_with_punctuation_and_digits_has_no_missing_glyphs():
+    # a verse marker, colon and digits inside an Arabic word must come from the Arabic font
+    font = Fonts(22).get(Style.NORMAL, "الجزء: 7 ۝")
+    for ch in "الجزء:7 ":
+        assert font.getmask(ch).getbbox() is not None or ch == " "
