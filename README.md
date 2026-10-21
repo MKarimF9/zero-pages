@@ -142,7 +142,7 @@ You can also run it without the reader: `python3 -m ereader.upload --books ~/boo
 
 ## Long chapters
 
-Books are laid out lazily: only the part you are reading, plus its neighbours, is in memory. A chapter file bigger than about 60 KB is cut into chunks of about 40 KB at paragraph ends (`CHUNK_BYTES` in `ereader/book.py`), so a huge single-chapter book opens at once and uses a few MB, not tens. Measured on a Mac with a synthetic 2 MB chapter: first page in 0.6 s (was 30 s), Python memory 5 MB (was 55 MB). Pi Zero numbers will differ; time it with the `[reader] section ... pages in ...s` lines the app prints.
+Books are laid out lazily: only the part you are reading, plus its neighbours, is in memory. A chapter file bigger than about 60 KB is cut into chunks of about 40 KB at paragraph ends (`CHUNK_BYTES` in `ereader/book.py`), so a huge single-chapter book opens at once and uses a few MB, not tens. Measured on a Mac with a synthetic 2 MB chapter: first page in 0.6 s (was 30 s), Python memory 5 MB (was 55 MB). Word widths are remembered per font (`Fonts.width`, up to 20,000 entries), which cut laying out a Quran chunk from 0.67 s to 0.05 s on the Mac. Pi Zero numbers will differ; time it with the `[reader] section ... pages in ...s` lines the app prints.
 
 ## Fonts
 
