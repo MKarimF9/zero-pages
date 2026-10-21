@@ -23,9 +23,9 @@ from PIL import Image, ImageDraw
 from .blocks import Style
 from .book import LazyBook
 from .controls import Button
-from .epub import Epub
 from .fonts import FAMILIES, Fonts
 from .layout import MARGIN, text_is_rtl
+from .library import BookIndex
 from .page import Page, PlacedImage, PlacedWord
 from .state import ReadingState
 from .ui import (BLACK, PAD, STATUS_BAR_HEIGHT, WHITE, draw_icon, draw_progress,
@@ -93,25 +93,14 @@ def _move(cursor: int, count: int, button: Button) -> int:
 class LibraryScreen(Screen):
     def __init__(self, ctx: AppContext):
         self.ctx = ctx
-        books = sorted(Path(ctx.books_dir).expanduser().glob("*.epub"))
-        books.sort(key=lambda p: str(p) != ctx.state.last_book)  # last-read first (stable)
-        self.books = books
-        self.meta = [self._meta(p) for p in books]  # (title, author)
+        index = BookIndex(ctx.state.path.parent / "library.json")  # next to the reading state
+        infos = index.scan(ctx.books_dir)
+        infos.sort(key=lambda b: str(b.path) != ctx.state.last_book)  # last-read first (stable)
+        self.infos = infos
+        self.books = [b.path for b in infos]
+        self.meta = [(b.title, b.author) for b in infos]  # (title, author)
         self.cursor = 0
         self.full_refresh = True
-
-    @staticmethod
-    def _meta(path: Path) -> tuple[str, str]:
-        epub = Epub(path)
-        try:
-            epub.open()
-            return epub.title, epub.author
-        except NotImplementedError:
-            return path.stem, ""
-        except Exception:
-            return path.stem, "(unreadable)"
-        finally:
-            epub.close()
 
     @property
     def _row_h(self) -> int:
