@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .book import LazyBook
 from .cache import forget_book
+from .cards import CardStore
 from .epub import Epub
 from .fonts import Fonts
 from .library import BookIndex
@@ -24,12 +25,13 @@ MOVES = ("up", "down", "top")
 
 class BookManager:
     def __init__(self, books_dir: str | Path, state: ReadingState, index: BookIndex | None = None,
-                 layout: tuple[Fonts, int, int, int] | None = None):
+                 layout: tuple[Fonts, int, int, int] | None = None, cards: CardStore | None = None):
         """layout = (fonts, page width, page height, bottom margin) as the reader lays pages out;
         needed only to move your place (set_position)."""
         self.books_dir = Path(books_dir).expanduser()
         self.state = state
         self.layout = layout
+        self.cards = cards or CardStore(state.path.parent / "cards.json")   # flash cards, edited from the same page
         self.index = index or BookIndex(state.path.parent / "library.json")
         self._lock = threading.Lock()   # web requests run in several threads
 

@@ -213,7 +213,7 @@ def test_library_options_open_the_upload_screen(tmp_path):
     try:
         opts = LibraryScreen(ctx).handle(B.SELECT_LONG)
         assert isinstance(opts, LibraryOptionsScreen) and opts.render().size == (400, 300)
-        opts.cursor = 3
+        opts.cursor = 4
         assert isinstance(opts.handle(B.SELECT), UploadScreen)
     finally:
         screens.local_ip = old

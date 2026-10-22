@@ -25,6 +25,7 @@ from .book import LazyBook
 from .controls import Button
 from .fonts import FAMILIES, Fonts
 from .cache import forget_book
+from .cards import CardStore
 from .covers import THUMB_SIZE, cached_cover
 from .layout import MARGIN, text_is_rtl
 from .library import BookIndex
@@ -52,10 +53,18 @@ class AppContext:
     width: int
     height: int
     status_fonts: Fonts | None = None  # small text: status bar, author names
+    cards: "CardStore | None" = None   # flash cards and quotes; made on first use (cardscreens.card_store)
 
     @property
     def small(self) -> Fonts:
         return self.status_fonts or self.ui_fonts
+
+
+def card_store(ctx: AppContext) -> CardStore:
+    """The one CardStore of this run (the phone page edits the same one)."""
+    if ctx.cards is None:
+        ctx.cards = CardStore(ctx.state.path.parent / "cards.json")
+    return ctx.cards
 
 
 def blank(ctx: AppContext) -> Image.Image:
@@ -468,6 +477,7 @@ class LibraryOptionsScreen(Screen):
         return [("sort", "sort", "Sort by", SORTS[state.get_setting("library_sort", "recent")]),
                 ("filter", "filter_list", "Show", choices.get(state.get_setting("library_filter", "all"), "All")),
                 ("sleep", "bedtime", "Sleep screen", SLEEP_SCREENS[state.get_setting("sleep_screen", "cover")]),
+                ("cards", "library_books", "Flash cards and quotes", ""),
                 ("upload", "cloud_upload", "Manage books over Wi-Fi", ""),
                 ("back", "arrow_back", "Back to library", "")]
 
@@ -490,6 +500,9 @@ class LibraryOptionsScreen(Screen):
             state.set_setting("library_filter", _next(filter_choices(state), state.get_setting("library_filter", "all")))
         elif key == "sleep":
             state.set_setting("sleep_screen", _next(SLEEP_SCREENS, state.get_setting("sleep_screen", "cover")))
+        elif key == "cards":
+            from .cardscreens import DeckListScreen   # (it imports this file, so not at the top)
+            return DeckListScreen(self.ctx)
         elif key == "upload":
             return UploadScreen(self.ctx)
         else:
@@ -513,7 +526,7 @@ class UploadScreen(Screen):
         else:
             try:
                 self.server = UploadServer(ctx.books_dir, port=port,   # a fresh random PIN each time
-                                           manager=BookManager(ctx.books_dir, ctx.state, layout=(
+                                           manager=BookManager(ctx.books_dir, ctx.state, cards=card_store(ctx), layout=(
                                                ctx.fonts, ctx.width, ctx.height - STATUS_BAR_HEIGHT, 6)))
                 self.server.start()
             except OSError as e:

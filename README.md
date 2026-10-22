@@ -170,6 +170,10 @@ Safety: every request needs the PIN (5 wrong guesses lock it for a minute); only
 
 You can also run it without the reader: `python3 -m ereader.upload --books ~/books` prints the address and PIN. It uses only the standard library, so there is nothing extra to install.
 
+## Flash cards and quotes
+
+For anything you want to remember. A **card** has a front, an optional back and an optional source, and belongs to a **deck**; a card with no back is a **quote**. Cards are added from the phone page (its **Cards** tab: one at a time, or paste or upload many, in Anki's "Notes in plain text" shape: `front`, tab, `back`, tab, `source`) and kept in `~/.pi-ereader/cards.json` (`ereader/cards.py`). On the reader, hold select in the library and choose *Flash cards and quotes* (`ereader/cardscreens.py`): **Review** shows the cards that are due (select shows the answer, up = forgot, down = got it) and schedules them with Leitner boxes (a known card comes back after 1, 3, 7, 14, then 30 days; a forgotten one at once); **Browse all** pages through every card. Card text is drawn with the book font and layout code, so Arabic and mixed lines read right to left like in books, and long text shrinks to fit. Text only for now.
+
 ## Long chapters
 
 Books are laid out lazily: only the part you are reading, plus its neighbours, is in memory. A chapter file bigger than about 60 KB is cut into chunks of about 40 KB at paragraph ends (`CHUNK_BYTES` in `ereader/book.py`), so a huge single-chapter book opens at once and uses a few MB, not tens. Measured on a Mac with a synthetic 2 MB chapter: first page in 0.6 s (was 30 s), Python memory 5 MB (was 55 MB). Word widths are remembered per font (`Fonts.width`, up to 20,000 entries), which cut laying out a Quran chunk from 0.67 s to 0.05 s on the Mac. Pi Zero numbers will differ; time it with the `[reader] section ... pages in ...s` lines the app prints.

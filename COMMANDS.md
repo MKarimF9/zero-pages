@@ -116,7 +116,7 @@ python3 main.py --display png --controls gpio --books ~/books --width 400 --heig
 
 | Where | Up / Down | Select | Hold select (`m`) |
 |---|---|---|---|
-| Library | move between books | open the book | options: sort, filter, sleep screen, add books over Wi-Fi |
+| Library | move between books | open the book | options: sort, filter, sleep screen, **flash cards and quotes**, add books over Wi-Fi |
 | Reading | previous / next page | menu | same as select |
 | Menu (scrolls) | move | choose (*Resume*, *Table of contents*, *Bookmarks*, *Bookmark this page*, *Back to library*, *Font*, *Font size*, *Pin to top*, *Delete this book*) | same as select |
 | Bookmarks | move (first row is *Back*) | go to the bookmark | **remove** the bookmark |
@@ -124,6 +124,10 @@ python3 main.py --display png --controls gpio --books ~/books --width 400 --heig
 | Contents | move 1 row (or 5, 10, 25: see hold) | jump to the chapter (first row is *Back*) | change the jump size: 1, 5, 10, 25 |
 | Library options | move | change the value (*Sort by*, *Show*: All / Reading / New / Finished / **Up next** / one per category, *Sleep screen*), or open *Manage books over Wi-Fi*, or go back | same as select |
 | Manage books over Wi-Fi | refresh | stop and go back | same as select |
+| Cards: deck list | move | open the deck (last row: back to the library) | same as select |
+| Cards: a deck | move | *Review* (cards due), *Browse all*, *Back to decks* | same as select |
+| Cards: review | **before the answer:** up = exit, down = skip. **After it:** up = *Forgot*, down = *Got it* | show / hide the answer (a quote with no back: *Next*) | same as select |
+| Cards: browse | up = previous card, down = next card (after the last one comes an *End* page) | show / hide the answer; on a quote or the *End* page: go back | same as select |
 
 Your place, font and settings are saved. Reset everything on the Pi:
 ```bash
@@ -359,6 +363,7 @@ Both scripts say in their docstrings where to download the inputs.
 | **Go to…** | move your place: pick a chapter, or type a percent; the book then opens there |
 | **Delete** | remove the file and everything remembered about it (asks first) |
 | **Add books** (top of the page) | pick or drop `.epub` files to send them to the reader |
+| **Books / Cards** tabs | switch between your books and your flash cards (see section 14) |
 
 The QR code on the reader's *Manage books* screen holds the address and the PIN, so scanning it opens the page already unlocked.
 
@@ -374,3 +379,29 @@ python3 tools/make_hadith_epub.py ~/hadith-json ~/books-out --only riyad_assalih
 ```
 
 On the contents screen, hold select until the header says `jump: parts` to move between collections.
+
+---
+
+## 14. Flash cards and quotes
+
+For things you want to remember: a quote, a verse, a word and its meaning, a question and its answer. Text only for now (pictures may come later).
+
+A **card** has a **front**, an optional **back** and an optional **source** (for example *Sahih al-Bukhari 1*), and lives in a **deck** (for example *Quotes*, *Arabic words*). A card with no back is a **quote**. Arabic and English both work, including a line of each.
+
+**Add cards from your phone.** Open the phone page (library, hold select, *Manage books over Wi-Fi*, scan the QR code) and tap the **Cards** tab:
+
+| Button | Does |
+|---|---|
+| **Add card** | adds it to the deck named in *Deck* (a new name makes a new deck; *quotes* and *Quotes* are the same deck) |
+| **Import many cards** | paste lines, or choose a `.txt` / `.tsv` file; one card per line: `front`, a tab, `back`, a tab, `source` (back and source are optional). Anki's *File, Export, Notes in plain text* gives this shape; HTML in it (`<br>`, `<b>`) is turned into plain text and its `#separator` header lines are skipped. They go into the deck in *Deck* |
+| Deck chips | show one deck; the number is how many cards, and how many are due |
+| **Edit** / **Delete** | change or remove a card (asks before deleting) |
+| **Delete this deck** | removes the deck and all its cards (asks first) |
+
+**Use them on the reader.** Library, hold select (`m`), *Flash cards and quotes*, pick a deck:
+- **Review** shows the cards that are due. Select shows the answer; then up = *Forgot*, down = *Got it*. A forgotten card comes back before you finish; a known card comes back later (1, 3, 7, 14, then 30 days). New cards are due at once. A quote (no back) just shows with its source; select = *Next*.
+- **Browse all** pages through every card (up / down), select shows the answer.
+
+Limits: 5000 cards, a front up to 1000 characters, a back up to 2000, a source up to 200. Text too long for the screen is shrunk (down to 14 px) and then cut with "…".
+
+Where it is kept: `~/.pi-ereader/cards.json` (back it up with your books). The reader and the phone page share it. Deleting a book does not touch your cards.
