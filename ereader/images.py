@@ -49,6 +49,34 @@ def _is_line_art(gray: Image.Image) -> bool:
     return (sum(hist[:40]) + sum(hist[216:])) >= LINE_ART_SHARE * (gray.width * gray.height)
 
 
+def to_one_bit(img: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """`img` at `size`, pure black and white: diagrams thresholded, photos dithered."""
+    gray = _flatten(img).resize(size, Image.LANCZOS)
+    if _is_line_art(gray):
+        return gray.convert("1", dither=Image.Dither.NONE)           # crisp lines
+    return ImageOps.autocontrast(gray, cutoff=1).convert("1")       # photo: Floyd-Steinberg dithering
+
+
+STORE_MAX = (600, 450)         # a card picture is kept at most this big (the screen shows it smaller)
+MAX_PIXELS = 40_000_000        # refuse to decode anything bigger than this (a decompression bomb)
+PICTURE_FORMATS = ("PNG", "JPEG", "GIF", "WEBP", "BMP")
+
+
+def prepare_picture(data: bytes) -> Image.Image:
+    """A picture sent from the phone, made ready to keep: upright, grayscale on white, at most
+    STORE_MAX. ValueError if it is not a picture we can draw."""
+    try:
+        img = Image.open(io.BytesIO(data))
+        if img.format not in PICTURE_FORMATS or img.width * img.height > MAX_PIXELS:
+            raise ValueError
+        img.draft("L", (STORE_MAX[0] * 2, STORE_MAX[1] * 2))        # JPEG: decode at reduced size
+        gray = _flatten(ImageOps.exif_transpose(img))
+        gray.thumbnail(STORE_MAX, Image.LANCZOS)                   # only ever shrinks
+        return gray
+    except (OSError, ValueError, SyntaxError, Image.DecompressionBombError):
+        raise ValueError("That is not a picture the reader can use (PNG, JPEG, GIF, WebP or BMP).") from None
+
+
 def render(epub: Epub, path: str, size: tuple[int, int], cache_dir: Path | None = None) -> Image.Image | None:
     """The image at `size`, 1-bit; None if it can't be read."""
     cached = None
@@ -63,11 +91,7 @@ def render(epub: Epub, path: str, size: tuple[int, int], cache_dir: Path | None 
     try:
         img = Image.open(io.BytesIO(epub.read(path)))
         img.draft("L", (size[0] * 2, size[1] * 2))                  # JPEG: decode at reduced size
-        gray = _flatten(img).resize(size, Image.LANCZOS)
-        if _is_line_art(gray):
-            out = gray.convert("1", dither=Image.Dither.NONE)       # crisp lines
-        else:
-            out = ImageOps.autocontrast(gray, cutoff=1).convert("1")  # photo: Floyd-Steinberg dithering
+        out = to_one_bit(img, size)
     except Exception:
         return None
     if cached is not None:

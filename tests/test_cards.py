@@ -135,7 +135,8 @@ def test_api_cards_round_trip(tmp_path):
         cid = body["id"]
         status, got = r.call("GET", "/api/cards")
         assert status == 200 and got["decks"][0]["name"] == "Quotes"
-        assert got["cards"] == [{"id": cid, "deck": "Quotes", "front": "كن لطيفا", "back": "Be kind", "source": "x", "due": True}]
+        assert got["cards"] == [{"id": cid, "deck": "Quotes", "front": "كن لطيفا", "back": "Be kind", "source": "x", "due": True,
+                                  "image": False, "back_image": False}]
         assert post(r, f"/api/cards/update?id={cid}", {"front": "new"})[0] == 200
         assert r.call("GET", "/api/cards")[1]["cards"][0]["front"] == "new"
         assert r.call("POST", "/api/cards/import?deck=Quotes", "a\tb\nc\td".encode())[1] == {"ok": True, "added": 2}
@@ -307,7 +308,7 @@ def test_cards_render_without_running_off_the_screen(tmp_path):
         for revealed in (False, True):
             img = blank(ctx); d = ImageDraw.Draw(img)
             top, bottom = 40, 260
-            draw_card(ctx, d, card, top, bottom, revealed)
+            draw_card(ctx, img, card, top, bottom, revealed)
             assert not any(img.getpixel((x, y)) == 0 for y in list(range(top)) + list(range(bottom, 300)) for x in range(400)), (card["front"][:10], revealed)
             assert any(img.getpixel((x, y)) == 0 for y in range(top, bottom) for x in range(400))
 
