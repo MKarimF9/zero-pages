@@ -224,9 +224,16 @@ class LazyBook:
 
     @property
     def chapter_title(self) -> str:
-        """Title of the table-of-contents entry for where you are."""
+        """Title of the table-of-contents entry for where you are. A chapter listed under
+        a part or collection is shown with it: "Sahih Muslim › 1. The Book of Faith"."""
         i = self._chapter_pos()
-        return self.epub.toc[i].title if i >= 0 else ""
+        if i < 0:
+            return ""
+        entry = self.epub.toc[i]
+        for parent in reversed(self.epub.toc[:i]):
+            if parent.level < entry.level:
+                return f"{parent.title} › {entry.title}"
+        return entry.title
 
     @property
     def chapter_index(self) -> int:
