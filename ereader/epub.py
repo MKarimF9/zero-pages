@@ -41,6 +41,7 @@ class TocEntry:
     title: str
     section: int       # index into Epub.spine
     fragment: str = "" # the #anchor inside that file, if any (a chapter in the middle of a long file)
+    level: int = 0     # 0 = top level; a chapter listed under a part or collection is 1, and so on
 
 
 class Epub:
@@ -163,28 +164,39 @@ class Epub:
         """Table of contents from the EPUB 2 .ncx, else the EPUB 3 nav document.
         Entries pointing outside the spine are dropped; the rest are sorted by
         spine position (stable, so document order is kept within a section)."""
-        raw: list[tuple[str, str, str]] = []  # (title, src, toc file path)
+        raw: list[tuple[str, str, str, int]] = []  # (title, src, toc file path, nesting level)
         if ncx_href:
             root = ET.fromstring(self.read(ncx_href))
-            for point in root.iter("{%s}navPoint" % NS["ncx"]):
-                text = point.find("ncx:navLabel/ncx:text", NS)
-                content = point.find("ncx:content", NS)
-                if text is not None and content is not None:
-                    raw.append(("".join(text.itertext()), content.get("src", ""), ncx_href))
+            def walk_ncx(parent, level: int) -> None:
+                for point in parent.findall("ncx:navPoint", NS):
+                    text = point.find("ncx:navLabel/ncx:text", NS)
+                    content = point.find("ncx:content", NS)
+                    if text is not None and content is not None:
+                        raw.append(("".join(text.itertext()), content.get("src", ""), ncx_href, level))
+                    walk_ncx(point, level + 1)
+            nav_map = root.find("ncx:navMap", NS)
+            walk_ncx(nav_map if nav_map is not None else root, 0)
         elif nav_href:
             root = ET.fromstring(self.read(nav_href))
             for nav in root.iter(XHTML + "nav"):
                 if "toc" in (nav.get(EPUB_TYPE) or "").split():
-                    for a in nav.iter(XHTML + "a"):
-                        raw.append(("".join(a.itertext()), a.get("href", ""), nav_href))
+                    def walk_nav(ol, level: int) -> None:
+                        for li in ol.findall(XHTML + "li"):
+                            a = li.find(XHTML + "a")
+                            if a is not None:
+                                raw.append(("".join(a.itertext()), a.get("href", ""), nav_href, level))
+                            for sub in li.findall(XHTML + "ol"):
+                                walk_nav(sub, level + 1)
+                    for ol in nav.findall(XHTML + "ol"):
+                        walk_nav(ol, 0)
         index = {href: i for i, href in enumerate(self.spine)}
         entries = []
-        for title, src, base in raw:
+        for title, src, base, level in raw:
             target, _, fragment = src.partition("#")
             path = posixpath.normpath(posixpath.join(posixpath.dirname(base), unquote(target)))
             title = " ".join(title.split())
             if title and path in index:
-                entries.append(TocEntry(title, index[path], unquote(fragment)))
+                entries.append(TocEntry(title, index[path], unquote(fragment), level))
         return sorted(entries, key=lambda e: e.section)
 
     def _resolve(self, href: str) -> str:

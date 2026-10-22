@@ -124,6 +124,17 @@ On the contents screen, **hold select** to change how far up/down move: 1, 5, 10
 
 An Arabic paragraph followed by an English one (a verse and its translation, as in the Quran EPUBs) is kept on one page. If the pair doesn't fit in what is left of the page, it starts on the next page. If it is too tall for a whole page, the pair is shrunk together (2 px at a time, down to `MIN_VERSE_SIZE` = 14 in `ereader/layout.py`) until it fits, and gets a page of its own. Only a verse that is still too tall at that size, such as the long verse at 2:282, flows over pages as normal text. Other text keeps your chosen font size.
 
+## Hadith books
+
+`tools/make_hadith_epub.py` turns the JSON files of [AhmedBaset/hadith-json](https://github.com/AhmedBaset/hadith-json) (the `db/by_book/` folder, copied flat into one folder) into EPUBs: one book called **Hadith** with every collection, and one book per collection. The contents list is nested (Hadith > collection > chapter): chapters are indented under their collection, and on the contents screen **hold select until the header says `jump: parts`** to move up/down between collections instead of chapters. Each hadith is an Arabic paragraph then its English one, so the reader keeps them on one page (shrinking a long pair to fit).
+
+```bash
+python3 tools/make_hadith_epub.py ~/hadith-json ~/books-out                      # Hadith.epub + individual/*.epub
+python3 tools/make_hadith_epub.py ~/hadith-json ~/books-out --only riyad_assalihin
+```
+
+The data was scraped from sunnah.com, the repository states no license, and the English translations belong to their translators, so keep these books on your own device. The data and the built books are in `.gitignore`.
+
 ## Headings
 
 `<h1>`-`<h6>` are headings, and so are blocks the book marks with a title-like class (`chapter-title`, `subtitle`, `title`...), `role="heading"` or `epub:type="title"`: they are drawn bold and centered with extra space around them. A class-marked block longer than 40 words is treated as an ordinary paragraph.
@@ -151,7 +162,7 @@ Books are laid out lazily: only the part you are reading, plus its neighbours, i
 ## Fonts
 
 Bundled in `assets/fonts`, all under the SIL Open Font License (license texts are next to them):
-- **Literata** (default), **Noto Serif** and **Charis SIL** for Latin text. Switch between them with the **Font** row in the reader menu; the choice is remembered.
+- **Literata** (default), **Noto Serif** and **Charis SIL** for Latin text, including the transliteration letters (ḥ ṣ ḍ ṭ ẓ ʻ ʼ). Switch between them with the **Font** row in the reader menu; the choice is remembered.
 - **Amiri Quran** for all Arabic text, whichever Latin font is selected. It draws the vowel marks and Quranic stop signs properly. It has no bold, so bold Arabic (headings) uses **Noto Naskh Arabic** Bold. Arabic is drawn 20% larger than the Latin text (`ARABIC_SCALE` in `ereader/fonts.py`) and its lines get extra height for the marks (`ARABIC_PAD`).
 
 Literata, Noto Serif and Noto Naskh Arabic are stored as small static files (about 60-140 KB each) built from Google Fonts' variable fonts by `tools/make_fonts.py`. Charis SIL is copied unchanged, because its license reserves the font name.
