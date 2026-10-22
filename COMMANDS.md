@@ -9,6 +9,40 @@ Copy-paste cheat sheet. **Mac** means a Terminal on your Mac. **Pi** means an SS
 
 ---
 
+## 0. What does what (read this first)
+
+There are **four separate things**. Mixing them up is the usual reason "it's running but I see nothing".
+
+| Thing | What it is | How it starts | Port |
+|---|---|---|---|
+| **The reader** (`main.py`) | The e-reader app itself: opens books, lays out pages, handles keys/buttons. It draws to a PNG file (no screen) or to the e-paper (real screen). | By hand: `python3 main.py ...`, or at boot by the systemd service | none |
+| **The preview server** (`python3 -m http.server 8000`) | A plain web server that shows the reader's PNG in a browser, refreshed every second. Only needed **without** the screen. It must be started **inside** `~/pi-ereader/preview`. | By hand, in a second window | 8000 |
+| **The phone page** (Manage books) | A web page to add, organise (category, Up next, pin), move your place in, and delete books. It is **part of the reader**: it exists only while the reader is on the *Manage books over Wi-Fi* screen, with a QR code and PIN. | Library, hold select (`m`), *Manage books over Wi-Fi*. Press select to stop. | 8080 |
+| **The boot service** (`pi-ereader.service`) | Starts the reader on boot for the **real** e-paper screen and GPIO buttons. Do **not** enable it until the screen and buttons are connected: without them it crashes and restarts forever. | `sudo systemctl enable --now pi-ereader` | none |
+
+**Which setup am I in?**
+
+| You have | Run | Look at |
+|---|---|---|
+| No screen or buttons yet (now) | the reader **and** the preview server, by hand, in two SSH windows (section 2) | `http://192.168.1.50:8000` in a browser; type keys in the reader's window |
+| E-paper screen and three buttons | the boot service (section 6) | the e-paper; the phone page for managing books |
+
+**Shortcuts** so you don't retype the long commands (run once on the Pi):
+```bash
+echo "alias reader='cd ~/pi-ereader && python3 main.py --books ~/books --width 400 --height 300'" >> ~/.bashrc
+echo "alias preview='cd ~/pi-ereader/preview && python3 -m http.server 8000'" >> ~/.bashrc
+source ~/.bashrc
+# from then on: type  reader  in one SSH window and  preview  in another
+```
+Keep the reader running after you close SSH (the reader stops when its SSH window closes):
+```bash
+sudo apt install tmux
+tmux                      # start the reader inside it, then press Ctrl+B and then D to leave it running
+tmux attach               # come back to it later
+```
+
+---
+
 ## 1. Where to open what
 
 | What | Where | Needs |
@@ -34,9 +68,10 @@ python3 main.py --books ~/books --width 400 --height 300
 
 **Window 2: the preview server** (start the reader first: it creates the `preview` folder)
 ```bash
-cd ~/pi-ereader/preview
+cd ~/pi-ereader/preview        # IMPORTANT: inside preview/, not ~/pi-ereader
 python3 -m http.server 8000
 ```
+A web server shows whatever folder it was started in. If your browser lists `.git`, `ereader`, `main.py`..., you started it one folder too high: press `Ctrl+C`, `cd` into `preview` and start it again (or open `http://192.168.1.50:8000/preview/`).
 
 **Your Mac's browser:** open http://192.168.1.50:8000. It refreshes every second.
 
@@ -87,8 +122,8 @@ python3 main.py --display png --controls gpio --books ~/books --width 400 --heig
 | Bookmarks | move (first row is *Back*) | go to the bookmark | **remove** the bookmark |
 | Delete this book? | choose *Keep the book* (default) or *Delete it* | confirm the choice | same as select |
 | Contents | move 1 row (or 5, 10, 25: see hold) | jump to the chapter (first row is *Back*) | change the jump size: 1, 5, 10, 25 |
-| Library options | move | change the value (*Sort by*, *Show*, *Sleep screen*), or open *Manage books over Wi-Fi*, or go back | same as select |
-| Add books over Wi-Fi | refresh | stop and go back | same as select |
+| Library options | move | change the value (*Sort by*, *Show*: All / Reading / New / Finished / **Up next** / one per category, *Sleep screen*), or open *Manage books over Wi-Fi*, or go back | same as select |
+| Manage books over Wi-Fi | refresh | stop and go back | same as select |
 
 Your place, font and settings are saved. Reset everything on the Pi:
 ```bash
@@ -184,7 +219,7 @@ python3 main.py --books ~/books --display epaper --controls gpio
 ```
 Wiring: buttons between a GPIO pin and GND: **up = GPIO 5** (header pin 29), **down = GPIO 6** (pin 31), **select = GPIO 13** (pin 33). The e-paper HAT uses GPIO 17, 25, 8, 24, 18 and SPI; keep the buttons off those. The e-paper path has **not been tested on real hardware yet**.
 
-**Start on boot (systemd)**
+**Start on boot (systemd)**: only once the screen and buttons are connected. Without them the service crashes and restarts in a loop (see section 11).
 ```bash
 # Pi
 cd ~/pi-ereader
@@ -301,12 +336,34 @@ Both scripts say in their docstrings where to download the inputs.
 | Arrow keys do nothing | `git pull` (arrow keys were added after the first version); letters `w`/`s` always work. |
 | Upload page says wrong PIN / locked | The PIN is new each time the *Manage books* screen opens. Five wrong tries lock it for a minute. |
 | A book shows as `(unreadable)` | The file didn't copy fully or isn't a valid EPUB; copy it again. |
+| Browser shows a folder listing with `.git`, `ereader`, `main.py` | The preview server was started in `~/pi-ereader`. Stop it (`Ctrl+C`), `cd ~/pi-ereader/preview`, start it again. |
+| `systemctl status pi-ereader` says *running* but nothing works; the log says *Scheduled restart job, restart counter is at N* | The service is crashing and restarting in a loop (it needs the e-paper screen and buttons). With no hardware: `sudo systemctl stop pi-ereader && sudo systemctl disable pi-ereader`, then use section 2. See why it fails: `journalctl -u pi-ereader -n 30 --no-pager`. |
+| Nothing on port 8000 | `ss -ltnp \| grep -E '8000\|8080'`. Nothing listed = the preview server isn't running (it is **not** part of the reader or the service). 8080 exists only while the reader is on *Manage books over Wi-Fi*. |
+| SSH won't connect | `ping 192.168.1.50` (Pi on and on the same Wi-Fi as the Mac?), try `ssh pi@books.local`, and read the exact message: *timed out* = not reachable, *refused* = SSH off or wrong port, *Permission denied* = wrong user or key. |
 | Port 8000 or 8080 already in use | Stop the other program, or pass another port (`python3 -m http.server 8001`, `--port 8081`). |
 | Reader feels slow | Paste the `[reader] section ... pages in ...s` lines and say whether it's startup, opening a book, or each key press. |
 | Screen stuck after a crash (real hardware) | `sudo systemctl stop pi-ereader`, wait a few seconds, start it again. |
 
 
-## Hadith books
+---
+
+## 12. The phone page: what each button does
+
+| Button | Does |
+|---|---|
+| Filter chips (All, Up next, Reading, New, Finished, your categories) | show only those books; the number is how many |
+| **Up next** | add or remove the book from your reading list; in the *Up next* view, **▲ ▼** change the order |
+| **Pin** | keep the book at the top of the library on the reader |
+| Category dropdown | put the book on a shelf (pick one, *No category*, or *New category…*); the reader's *Show* option can then show just that shelf |
+| **Go to…** | move your place: pick a chapter, or type a percent; the book then opens there |
+| **Delete** | remove the file and everything remembered about it (asks first) |
+| **Add books** (top of the page) | pick or drop `.epub` files to send them to the reader |
+
+The QR code on the reader's *Manage books* screen holds the address and the PIN, so scanning it opens the page already unlocked.
+
+---
+
+## 13. Hadith books
 
 ```bash
 # Get the data (the db/by_book/ files, flat in one folder), build, and copy to the books folder
