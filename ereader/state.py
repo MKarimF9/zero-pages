@@ -21,7 +21,7 @@ FINISHED_AT = 0.98  # progress at which a book counts as finished
 class ReadingState:
     def __init__(self, path: str | Path = DEFAULT_PATH):
         self.path = Path(path).expanduser()
-        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "chunks": {}, "opened": {}, "pinned": [], "bookmarks": {}, "settings": {}, "last_book": None}
+        self._data = {"pages": {}, "positions": {}, "progress": {}, "chapters": {}, "chunks": {}, "opened": {}, "pinned": [], "bookmarks": {}, "categories": {}, "queue": [], "settings": {}, "last_book": None}
         try:
             self._data.update(json.loads(self.path.read_text()))
         except (FileNotFoundError, json.JSONDecodeError):
@@ -93,6 +93,52 @@ class ReadingState:
             books.remove(book)
         self.save()
 
+    def get_category(self, book: str) -> str:
+        """The shelf you put a book on ("Quran", "Hadith"...), or "" for none."""
+        return self._data.get("categories", {}).get(book, "")
+
+    def set_category(self, book: str, category: str) -> None:
+        category = " ".join(category.split())[:40]
+        table = self._data.setdefault("categories", {})
+        for existing in table.values():   # "quran" joins the "Quran" you already have
+            if existing.casefold() == category.casefold():
+                category = existing
+                break
+        if category:
+            table[book] = category
+        else:
+            table.pop(book, None)
+        self.save()
+
+    def categories(self) -> list[str]:
+        """Every category in use, alphabetically."""
+        return sorted({c for c in self._data.get("categories", {}).values() if c}, key=str.casefold)
+
+    def get_queue(self) -> list[str]:
+        """The "Up next" list: books you want to read, in the order you want to read them."""
+        return list(self._data.get("queue", []))
+
+    def is_queued(self, book: str) -> bool:
+        return book in self._data.get("queue", [])
+
+    def set_queued(self, book: str, queued: bool) -> None:
+        queue = self._data.setdefault("queue", [])
+        if queued and book not in queue:
+            queue.append(book)
+        elif not queued and book in queue:
+            queue.remove(book)
+        self.save()
+
+    def move_queued(self, book: str, direction: str) -> None:
+        """Move a book in the Up next list: "up", "down" or "top"."""
+        queue = self._data.get("queue", [])
+        if book not in queue:
+            return
+        i = queue.index(book)
+        j = {"up": max(i - 1, 0), "down": min(i + 1, len(queue) - 1), "top": 0}[direction]
+        queue.insert(j, queue.pop(i))
+        self.save()
+
     def forget(self, book: str) -> None:
         """Remove everything remembered about a book (its place, progress, chapter...)."""
         for table in ("pages", "positions", "progress", "chapters", "chunks", "opened", "bookmarks"):
@@ -101,6 +147,9 @@ class ReadingState:
             self._data["last_book"] = None
         if book in self._data.get("pinned", []):
             self._data["pinned"].remove(book)
+        if book in self._data.get("queue", []):
+            self._data["queue"].remove(book)
+        self._data.get("categories", {}).pop(book, None)
         self.save()
 
     def get_opened(self, book: str) -> float:
