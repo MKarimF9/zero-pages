@@ -40,6 +40,8 @@ MAX_UPLOAD_BYTES = 100 * 1024 * 1024   # a very large EPUB; the Pi's SD card is 
 DISK_RESERVE = 50 * 1024 * 1024        # always leave this much free
 MAX_FAILURES, LOCKOUT_SECONDS = 5, 60  # wrong PIN guesses allowed, then the lock
 MAX_JSON_BYTES = 4096                  # a change request is a few words
+MAX_CARD_BYTES = 16 * 1024             # one card: up to 1000 + 2000 characters, in any script
+MAX_IMPORT_BYTES = 512 * 1024          # a pasted list of cards
 
 
 def local_ip() -> str | None:
@@ -184,6 +186,15 @@ class _Handler(BaseHTTPRequestHandler):
                         self._json(200, self.app.manager.chapters(name))
                     except KeyError:
                         self._error(404, "No such book.")
+        elif path == "/api/cards":
+            if self.app.manager is None:
+                self._error(404, "Not found.")
+            elif self._authorized():
+                store = self.app.manager.cards
+                now = time.time()
+                self._json(200, {"decks": store.decks(now), "cards": [
+                    {k: c.get(k, "") for k in ("id", "deck", "front", "back", "source")} | {"due": c.get("due", 0) <= now}
+                    for c in store.all()]})
         elif path == "/api/library":
             if self.app.manager is None:
                 self._error(404, "Not found.")
@@ -194,6 +205,8 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if path.startswith("/api/cards/"):
+            return self._cards(path)
         if path not in ("/api/upload", "/api/delete", "/api/update", "/api/position"):
             return self._error(404, "Not found.")
         if path in ("/api/update", "/api/position") and self.app.manager is None:
@@ -218,6 +231,64 @@ class _Handler(BaseHTTPRequestHandler):
         if path in ("/api/update", "/api/position"):
             return self._change(path, name)
         self._upload(name)
+
+    def _body(self, limit: int) -> bytes | None:
+        """The request body, or None (after answering 400) if it is missing or over `limit` bytes."""
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            length = 0
+        if not 0 < length <= limit:
+            # Read and drop a body that is only a little too big, so the phone gets this message
+            # instead of a reset connection while it is still sending.
+            remaining = min(length, 8 * limit)
+            while remaining > 0:
+                chunk = self.rfile.read(min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+            self._error(400, "That is too big or empty.")
+            return None
+        return self.rfile.read(length)
+
+    def _cards(self, path: str) -> None:
+        """/api/cards/add, update, delete, import: flash cards and quotes."""
+        if path not in ("/api/cards/add", "/api/cards/update", "/api/cards/delete", "/api/cards/import") \
+                or self.app.manager is None:
+            return self._error(404, "Not found.")
+        if not self._authorized():
+            return
+        store = self.app.manager.cards
+        query = parse_qs(urlparse(self.path).query)
+        try:
+            if path == "/api/cards/delete":
+                if "deck" in query:
+                    return self._json(200, {"ok": True, "deleted": store.delete_deck(query["deck"][0])})
+                store.delete(query.get("id", [""])[0])
+                return self._json(200, {"ok": True})
+            if path == "/api/cards/import":
+                raw = self._body(MAX_IMPORT_BYTES)
+                if raw is None:
+                    return
+                added = store.import_text(query.get("deck", [""])[0], raw.decode("utf-8", errors="replace"))
+                return self._json(200, {"ok": True, "added": added})
+            raw = self._body(MAX_CARD_BYTES)
+            if raw is None:
+                return
+            data = json.loads(raw)
+            if path == "/api/cards/add":
+                if not isinstance(data, dict) or set(data) - {"deck", "front", "back", "source"}:
+                    raise ValueError("Send a deck, a front, and optionally a back and a source.")
+                card = store.add(data.get("deck", ""), data.get("front", ""), data.get("back", ""), data.get("source", ""))
+                return self._json(200, {"ok": True, "id": card["id"]})
+            store.update(query.get("id", [""])[0], data)
+        except KeyError:
+            return self._error(404, "No such card.")
+        except json.JSONDecodeError:
+            return self._error(400, "Send a small JSON body.")
+        except ValueError as e:
+            return self._error(400, str(e))
+        self._json(200, {"ok": True})
 
     def _change(self, path: str, name: str) -> None:
         try:
@@ -328,6 +399,10 @@ PAGE = """<!doctype html>
   ul { list-style:none; margin:0; padding:0; } li.up { display:flex; gap:12px; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
   li.up:first-child { border-top:0; } li.up .n { flex:1; min-width:0; overflow-wrap:anywhere; } li.up .s { color:var(--mut); font-size:14px; white-space:nowrap; }
   progress { width:100%; height:6px; } .err { color:var(--bad); } .good { color:var(--ok); } .mut { color:var(--mut); }
+  textarea { font:inherit; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); width:100%; min-height:5em; resize:vertical; }
+  input[type=text].wide { width:100%; } label.f { display:block; font-size:14px; color:var(--mut); margin-top:10px; }
+  .tabs { display:flex; gap:8px; margin-bottom:14px; } .tabs button { flex:1; }
+  .face { white-space:pre-wrap; overflow-wrap:anywhere; } .face.back { color:var(--mut); border-top:1px solid var(--line); margin-top:8px; padding-top:8px; }
   #msg { min-height:1.4em; margin-bottom:8px; } details > summary { cursor:pointer; font-weight:600; }
 </style></head><body><main>
 <h1>Your books</h1><p class="sub" id="sub">Organise what is on your e-reader.</p>
@@ -340,6 +415,8 @@ PAGE = """<!doctype html>
 <div id="msg" class="err"></div>
 
 <div id="app" hidden>
+  <div class="tabs"><button id="tabBooks" class="on">Books</button><button id="tabCards">Cards</button></div>
+  <div id="booksView">
   <details class="card"><summary>Add books</summary>
     <label id="drop"><b>Choose books or drop them here</b><span class="mut">.epub files only</span>
       <input id="file" type="file" accept=".epub,application/epub+zip" multiple></label>
@@ -347,6 +424,32 @@ PAGE = """<!doctype html>
   </details>
   <div id="chips"></div>
   <div id="books"></div>
+  </div>
+
+  <div id="cardsView" hidden>
+    <div class="card">
+      <b>Add a card</b>
+      <label class="f" for="cdeck">Deck</label>
+      <input id="cdeck" class="wide" type="text" list="decklist" maxlength="40" placeholder="Quotes, Arabic words, ...">
+      <datalist id="decklist"></datalist>
+      <label class="f" for="cfront">Front (the quote, or the question)</label>
+      <textarea id="cfront" dir="auto" maxlength="1000"></textarea>
+      <label class="f" for="cback">Back (the answer; leave empty for a quote)</label>
+      <textarea id="cback" dir="auto" maxlength="2000"></textarea>
+      <label class="f" for="csrc">Source (optional)</label>
+      <input id="csrc" class="wide" type="text" dir="auto" maxlength="200">
+      <div class="row"><button class="primary" id="cadd">Add card</button></div>
+    </div>
+    <details class="card"><summary>Import many cards</summary>
+      <p class="mut">One card per line: front, a tab, back, a tab, source (back and source are optional). Anki's
+        "Notes in plain text" export works. They go into the deck named above.</p>
+      <textarea id="cimport" dir="auto" style="min-height:8em"></textarea>
+      <div class="row"><button class="primary" id="cimp">Import</button>
+        <label class="mut">or a file: <input id="cfile" type="file" accept=".txt,.tsv,.csv,text/plain" style="display:inline"></label></div>
+    </details>
+    <div id="cchips"></div>
+    <div id="cardlist"></div>
+  </div>
 </div>
 
 <script>
@@ -452,8 +555,87 @@ function drawBooks() {
   if (!list.length) box.append(el('p', {className: 'mut', textContent: lib.books.length ? 'No books here yet.' : 'No books yet. Add some below.'}));
   for (const b of list) box.append(card(b));
 }
+let cards = {decks: [], cards: []}, deckFilter = sessionStorage.getItem('deck') || '', view = sessionStorage.getItem('view') || 'books';
+function applyView() {
+  $('#booksView').hidden = view !== 'books'; $('#cardsView').hidden = view !== 'cards';
+  $('#tabBooks').className = view === 'books' ? 'on' : ''; $('#tabCards').className = view === 'cards' ? 'on' : '';
+}
+function setView(v) { view = v; sessionStorage.setItem('view', v); applyView(); msg(''); if (v === 'cards') refreshCards(); }
+$('#tabBooks').onclick = () => setView('books'); $('#tabCards').onclick = () => setView('cards');
+async function refreshCards() {
+  try { cards = await api('/api/cards'); drawCards(); } catch (e) { msg(e.message); }
+}
+function drawCards() {
+  const names = cards.decks.map(d => d.name);
+  if (deckFilter && !names.includes(deckFilter)) deckFilter = '';
+  const list = $('#decklist'); list.innerHTML = '';
+  for (const n of names) list.append(el('option', {value: n}));
+  if (!$('#cdeck').value) $('#cdeck').value = deckFilter || sessionStorage.getItem('cdeck') || '';
+  const chips = $('#cchips'); chips.style.cssText = 'display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px';
+  chips.innerHTML = '';
+  const chip = (key, label) => el('button', {className: key === deckFilter ? 'on' : '', textContent: label, style: 'white-space:nowrap;border-radius:999px',
+    onclick: () => { deckFilter = key; sessionStorage.setItem('deck', key); drawCards(); }});
+  chips.append(chip('', 'All ' + cards.cards.length));
+  for (const d of cards.decks) chips.append(chip(d.name, d.name + ' ' + d.total + (d.due ? ' · ' + d.due + ' due' : '')));
+  const box = $('#cardlist'); box.innerHTML = '';
+  const shown = cards.cards.filter(c => !deckFilter || c.deck === deckFilter);
+  if (!shown.length) box.append(el('p', {className: 'mut', textContent: cards.cards.length ? 'No cards in this deck.' : 'No cards yet. Add one above.'}));
+  if (deckFilter) box.append(el('div', {className: 'row'}, el('button', {className: 'del', textContent: 'Delete this deck', onclick: async () => {
+    if (!confirm('Delete the deck ' + deckFilter + ' and its ' + shown.length + ' cards?')) return;
+    try { await api('/api/cards/delete?deck=' + encodeURIComponent(deckFilter), {method: 'POST'}); msg(''); } catch (e) { msg(e.message); }
+    deckFilter = ''; sessionStorage.setItem('deck', ''); refreshCards();
+  }})));
+  for (const c of shown) box.append(cardItem(c));
+}
+function cardItem(c) {
+  const box = el('div', {className: 'card book'});
+  const del = async () => {
+    if (!confirm('Delete this card?')) return;
+    try { await api('/api/cards/delete?id=' + encodeURIComponent(c.id), {method: 'POST'}); msg(''); } catch (e) { msg(e.message); }
+    refreshCards();
+  };
+  const edit = () => {
+    const deck = el('input', {type: 'text', className: 'wide', value: c.deck, maxLength: 40});
+    const front = el('textarea', {value: c.front, dir: 'auto'}), back = el('textarea', {value: c.back, dir: 'auto'});
+    const src = el('input', {type: 'text', className: 'wide', value: c.source, dir: 'auto'});
+    box.innerHTML = '';
+    box.append(el('label', {className: 'f', textContent: 'Deck'}), deck, el('label', {className: 'f', textContent: 'Front'}), front,
+      el('label', {className: 'f', textContent: 'Back'}), back, el('label', {className: 'f', textContent: 'Source'}), src,
+      el('div', {className: 'row'}, el('button', {className: 'primary', textContent: 'Save', onclick: async () => {
+        try { await api('/api/cards/update?id=' + encodeURIComponent(c.id), {method: 'POST',
+          body: JSON.stringify({deck: deck.value, front: front.value, back: back.value, source: src.value})}); msg(''); refreshCards(); }
+        catch (e) { msg(e.message); }
+      }}), el('button', {textContent: 'Cancel', onclick: () => refreshCards()})));
+  };
+  box.append(el('div', {className: 'face', dir: 'auto', textContent: c.front}));
+  if (c.back) box.append(el('div', {className: 'face back', dir: 'auto', textContent: c.back}));
+  if (c.source) box.append(el('div', {className: 'au', dir: 'auto', textContent: c.source}));
+  box.append(el('div', {className: 'row'}, el('span', {className: 'tag', textContent: c.deck}),
+    el('span', {className: 'tag', textContent: c.due ? 'due' : 'later'}),
+    el('button', {textContent: 'Edit', onclick: edit}), el('button', {className: 'del', textContent: 'Delete', onclick: del})));
+  return box;
+}
+$('#cadd').onclick = async () => {
+  const body = {deck: $('#cdeck').value, front: $('#cfront').value, back: $('#cback').value, source: $('#csrc').value};
+  try {
+    await api('/api/cards/add', {method: 'POST', body: JSON.stringify(body)});
+    sessionStorage.setItem('cdeck', body.deck.trim()); deckFilter = body.deck.trim() || deckFilter;
+    $('#cfront').value = ''; $('#cback').value = ''; $('#csrc').value = ''; msg('Card added to ' + body.deck.trim() + '.', true);
+  } catch (e) { msg(e.message); }
+  refreshCards();
+};
+$('#cfile').onchange = e => { const f = e.target.files[0]; if (f) f.text().then(t => { $('#cimport').value = t; }); e.target.value = ''; };
+$('#cimp').onclick = async () => {
+  const deck = $('#cdeck').value.trim();
+  if (!deck) return msg('Type the deck name above first.');
+  try {
+    const r = await api('/api/cards/import?deck=' + encodeURIComponent(deck), {method: 'POST', body: $('#cimport').value});
+    $('#cimport').value = ''; sessionStorage.setItem('cdeck', deck); deckFilter = deck; msg(r.added + ' cards added to ' + deck + '.', true);
+  } catch (e) { msg(e.message); }
+  refreshCards();
+};
 async function refresh() {
-  try { lib = await api('/api/library'); show(true); drawChips(); drawBooks(); }
+  try { lib = await api('/api/library'); show(true); applyView(); drawChips(); drawBooks(); if (view === 'cards') refreshCards(); }
   catch (e) {
     if (e.status === 403 || e.status === 429) { show(false); msg(pin ? e.message : ''); if (pin) { pin = ''; sessionStorage.removeItem('pin'); } }
     else msg(e.message);
