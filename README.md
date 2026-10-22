@@ -116,6 +116,10 @@ On the contents screen, **hold select** to change how far up/down move: 1, 5, 10
 
 *Bookmark this page* in the reader menu marks the page (a small bookmark appears in its top corner); the same row says *Remove bookmark* on a marked page. *Bookmarks* lists them in reading order with the chapter name and percent read: select goes there, **hold select** removes one. A bookmark remembers where in the chapter chunk the page is as a fraction, so it still lands on the right text after you change the font size. Deleting the book deletes its bookmarks.
 
+## Categories and Up next
+
+Each book can have a **category** (a shelf name you choose, such as "Quran" or "Hadith") and can be on your **Up next** list of books you want to read, in the order you want. Both are set from your phone (see *Managing books from your phone*). In the library, hold select and use the **Show** row to pick *Up next* (in your order) or one category; the choice is remembered. Deleting a book clears its category and Up next entry.
+
 ## Pinned books
 
 **Pin to top** in the reader menu keeps a book above all the others in the library (a pin icon marks it), whatever the sort order, with several pins in the order you pinned them. Pin the Quran, or whatever you open every day, and it never gets buried. The *Continue reading* card still goes to the book you last read: first if that book is pinned, otherwise right below the pinned ones.

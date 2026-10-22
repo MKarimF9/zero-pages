@@ -98,7 +98,23 @@ def effective_button(button: Button, screen: Screen) -> Button:
 
 SLEEP_SCREENS = {"cover": "Cover", "page": "Page"}
 SORTS = {"recent": "Recent", "title": "Title", "author": "Author"}
-FILTERS = {"all": "All", "reading": "Reading", "new": "New", "finished": "Finished"}
+FILTERS = {"all": "All", "reading": "Reading", "new": "New", "finished": "Finished", "want": "Up next"}
+CATEGORY_PREFIX = "cat:"
+
+
+def filter_choices(state: ReadingState) -> dict[str, str]:
+    """Library filters: the fixed ones, then one per category you have made."""
+    return {**FILTERS, **{CATEGORY_PREFIX + c: c for c in state.categories()}}
+
+
+def matches_filter(key: str, book: str, state: ReadingState) -> bool:
+    if key == "all":
+        return True
+    if key == "want":
+        return state.is_queued(book)
+    if key.startswith(CATEGORY_PREFIX):
+        return state.get_category(book) == key[len(CATEGORY_PREFIX):]
+    return state.status(book) == key
 
 
 def sort_books(infos: list, sort: str, state: ReadingState) -> list:
@@ -229,11 +245,17 @@ class LibraryScreen(Screen):
         self.ctx = ctx
         index = BookIndex(ctx.state.path.parent / "library.json")  # next to the reading state
         self.sort = ctx.state.get_setting("library_sort", "recent")
+        self.filters = filter_choices(ctx.state)
         self.filter = ctx.state.get_setting("library_filter", "all")
+        if self.filter not in self.filters:   # a category that no longer exists
+            self.filter = "all"
         infos = index.scan(ctx.books_dir)
         if self.filter != "all":
-            infos = [b for b in infos if ctx.state.status(str(b.path)) == self.filter]
+            infos = [b for b in infos if matches_filter(self.filter, str(b.path), ctx.state)]
         infos = sort_books(infos, self.sort, ctx.state)
+        if self.filter == "want":   # your Up next order, not the sort order
+            queue = {b: i for i, b in enumerate(ctx.state.get_queue())}
+            infos.sort(key=lambda b: queue.get(str(b.path), len(queue)))
         pin_order = {b: i for i, b in enumerate(ctx.state.get_pinned())}   # pinned books first, in pin order
         infos.sort(key=lambda b: pin_order.get(str(b.path), len(pin_order)))  # (stable: the rest keep their order)
         self.pinned_count = sum(str(b.path) in pin_order for b in infos)
@@ -289,14 +311,14 @@ class LibraryScreen(Screen):
         ctx = self.ctx
         if not self.books:
             if self.filter != "all":
-                return draw_message(ctx, ["No books match", f"Showing: {FILTERS[self.filter]} books",
+                return draw_message(ctx, ["No books match", f"Showing: {self.filters[self.filter]}",
                                           "", "Hold select to change the filter."])
             return draw_message(ctx, ["No books found", f"Copy .epub files into {ctx.books_dir}"])
 
         pages = self._pages()
         page = next(n for n, (a, b) in enumerate(pages) if a <= self.cursor < b)
         img = blank(ctx)
-        tag = f"{FILTERS[self.filter]} · " if self.filter != "all" else ""
+        tag = f"{self.filters[self.filter]} · " if self.filter != "all" else ""
         d, y, _ = list_frame(img, ctx.ui_fonts, "Library",
                              f"{tag}{SORTS[self.sort]}  {page + 1}/{len(pages)}", icon="library_books",
                              labels=("Up", "Open · hold: options", "Down"), hint_fonts=ctx.small)
@@ -438,8 +460,9 @@ class LibraryOptionsScreen(Screen):
     def _rows(self) -> list[tuple[str, str, str, str]]:
         """(key, icon, label, value)"""
         state = self.ctx.state
+        choices = filter_choices(state)
         return [("sort", "sort", "Sort by", SORTS[state.get_setting("library_sort", "recent")]),
-                ("filter", "filter_list", "Show", FILTERS[state.get_setting("library_filter", "all")]),
+                ("filter", "filter_list", "Show", choices.get(state.get_setting("library_filter", "all"), "All")),
                 ("sleep", "bedtime", "Sleep screen", SLEEP_SCREENS[state.get_setting("sleep_screen", "cover")]),
                 ("upload", "cloud_upload", "Add books over Wi-Fi", ""),
                 ("back", "arrow_back", "Back to library", "")]
@@ -460,7 +483,7 @@ class LibraryOptionsScreen(Screen):
         if key == "sort":
             state.set_setting("library_sort", _next(SORTS, state.get_setting("library_sort", "recent")))
         elif key == "filter":
-            state.set_setting("library_filter", _next(FILTERS, state.get_setting("library_filter", "all")))
+            state.set_setting("library_filter", _next(filter_choices(state), state.get_setting("library_filter", "all")))
         elif key == "sleep":
             state.set_setting("sleep_screen", _next(SLEEP_SCREENS, state.get_setting("sleep_screen", "cover")))
         elif key == "upload":
