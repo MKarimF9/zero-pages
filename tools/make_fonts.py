@@ -26,7 +26,9 @@ from fontTools.varLib.instancer import instantiateVariableFont
 OUT = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 
 LATIN = (list(range(0x20, 0x7F)) + list(range(0xA0, 0x180)) +      # Basic Latin .. Latin Extended-A
-         list(range(0x2000, 0x2070)) + [0x20AC, 0x2212, 0x2190, 0x2192, 0x25CC])
+         list(range(0x2000, 0x2070)) + [0x20AC, 0x2212, 0x2190, 0x2192, 0x25CC] +
+         list(range(0x2B0, 0x300)) + list(range(0x300, 0x370)) +      # modifier letters (ʿ ʾ) and combining marks
+         list(range(0x1E00, 0x1F00)))                                  # Latin Extended Additional (ḥ ṣ ḍ ṭ ẓ, for transliteration)
 ARABIC = (list(range(0x600, 0x700)) + list(range(0x750, 0x780)) + list(range(0x8A0, 0x900)) +
           list(range(0xFB50, 0xFE00)) + list(range(0xFE70, 0xFF00)) +
           list(range(0x20, 0x7F)) + [0xA0, 0xAB, 0xBB, 0x25CC] + list(range(0x2000, 0x2070)))

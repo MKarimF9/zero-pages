@@ -304,3 +304,15 @@ Both scripts say in their docstrings where to download the inputs.
 | Port 8000 or 8080 already in use | Stop the other program, or pass another port (`python3 -m http.server 8001`, `--port 8081`). |
 | Reader feels slow | Paste the `[reader] section ... pages in ...s` lines and say whether it's startup, opening a book, or each key press. |
 | Screen stuck after a crash (real hardware) | `sudo systemctl stop pi-ereader`, wait a few seconds, start it again. |
+
+
+## Hadith books
+
+```bash
+# Get the data (the db/by_book/ files, flat in one folder), build, and copy to the books folder
+python3 tools/make_hadith_epub.py ~/hadith-json ~/books-out
+cp ~/books-out/Hadith.epub ~/books/
+python3 tools/make_hadith_epub.py ~/hadith-json ~/books-out --only riyad_assalihin   # just one collection
+```
+
+On the contents screen, hold select until the header says `jump: parts` to move between collections.

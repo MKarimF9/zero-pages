@@ -6,3 +6,8 @@ __pycache__/
 preview/
 # Waveshare driver you copy in by hand (see README)
 lib/
+
+# hadith data and built books: the data has no license, keep them out of the repo
+hadith-json/
+books-out/
+*.epub

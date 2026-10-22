@@ -80,7 +80,9 @@ def visual_order(line: list[Word], rtl: bool) -> list[list[Word]]:
 # ------------------------------------------------------------------ layout
 
 def _is_arabic_block(block: TextBlock) -> bool:
-    return any(has_arabic(w.text) for w in block.words)
+    """Mostly Arabic. English with a few Arabic words in it (a lone "ﷺ") is not."""
+    arabic = sum(1 for w in block.words if has_arabic(w.text))
+    return arabic * 2 > len(block.words)
 
 
 def _line_width(line: list[Word], fonts: Fonts) -> float:
