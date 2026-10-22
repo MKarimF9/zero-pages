@@ -100,7 +100,7 @@ rm -r ~/.pi-ereader       # forget places, settings and cached covers and pictur
 
 ## 4. Adding books
 
-**Easiest: over Wi-Fi.** On the reader: library, hold select (`m`), *Manage books over Wi-Fi*. It shows an address and a PIN. Open the address on any device on the same Wi-Fi, type the PIN. You can organise your books (category, Up next, pin, delete) and add `.epub` files under *Add books*. Press select on the reader when done (the server stops).
+**Easiest: over Wi-Fi.** On the reader: library, hold select (`m`), *Manage books over Wi-Fi*. It shows a QR code (address and PIN inside), the address and the PIN. Scan the QR code with your phone's camera, or open the address on any device on the same Wi-Fi and type the PIN. You can organise your books (category, Up next, pin, delete) and add `.epub` files under *Add books*. Press select on the reader when done (the server stops).
 
 **Without the reader (Pi):**
 ```bash
