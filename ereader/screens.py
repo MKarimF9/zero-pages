@@ -30,6 +30,7 @@ from .layout import MARGIN, text_is_rtl
 from .library import BookIndex
 from .manager import BookManager
 from .page import Page, PlacedImage, PlacedWord
+from .qr import qr_image
 from .state import ReadingState
 from .upload import PORT, UploadServer, local_ip
 from .ui import (BLACK, PAD, STATUS_BAR_HEIGHT, WHITE, draw_icon, draw_progress,
@@ -523,21 +524,28 @@ class UploadScreen(Screen):
     def render(self) -> Image.Image:
         ctx, ui, small = self.ctx, self.ctx.ui_fonts, self.ctx.small
         img = blank(ctx)
-        d, top, _ = list_frame(img, ui, "Manage books", icon="wifi" if self.server else "wifi_off",
+        d, top, bottom = list_frame(img, ui, "Manage books", icon="wifi" if self.server else "wifi_off",
                                labels=("Refresh", "Done", "Refresh"))
         w, x = ctx.width, PAD
         if self.error:
             draw_text(d, ui, self.error, x, w - x, top + 30, align="left")
             draw_text(d, small, "Connect the Pi to Wi-Fi, then try again.", x, w - x, top + 60, align="left")
             return img
-        draw_text(d, small, "On your phone or computer (same Wi-Fi), open:", x, w - x, top + 16, align="left")
-        draw_text(d, ui, self.url, x, w - x, top + 44, Style.BOLD, align="left")
-        draw_text(d, small, "and type this PIN:", x, w - x, top + 80, align="left")
+        # The QR code carries the address and the PIN (after the #, so it never leaves the phone),
+        # so one scan opens the page unlocked. The PIN is still printed for typing by hand.
+        link = f"{self.url}/#{self.server.pin}" if self.server.pin else self.url
+        qr = qr_image(link, min(bottom - top - 8, w // 2 - PAD))
+        img.paste(qr, (w - PAD - qr.width, top + (bottom - top - qr.height) // 2))
+        text_w = w - qr.width - 3 * PAD
+        draw_text(d, small, "Scan with your phone,", x, x + text_w, top + 16, align="left")
+        draw_text(d, small, "or type this PIN:", x, x + text_w, top + 36, align="left")
         pin_font = ctx.fonts
-        d.text((x, top + 112), "  ".join(self.server.pin), font=pin_font.get(Style.BOLD), fill=BLACK, anchor="lm")
+        d.text((x, top + 66), " ".join(self.server.pin), font=pin_font.get(Style.BOLD), fill=BLACK, anchor="lm")
+        for i, line in enumerate(wrap_text(small, self.url, text_w, 3)):
+            draw_text(d, small, line, x, x + text_w, top + 100 + i * 20, align="left")
         added = len(self.server.added)
         text = f"Added this time: {added}" if added else "Waiting for books..."
-        draw_text(d, small, text, x, w - x, top + 150, align="left")
+        draw_text(d, small, text, x, x + text_w, bottom - 14, align="left")
         return img
 
     def handle(self, button: Button) -> Screen | None:

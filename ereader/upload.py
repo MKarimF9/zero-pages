@@ -351,6 +351,10 @@ PAGE = """<!doctype html>
 
 <script>
 const $ = s => document.querySelector(s);
+// The QR code on the e-reader opens http://address/#PIN. The part after # never reaches the server;
+// take the PIN from it, then wipe it from the address bar and history.
+const fromQr = /^#(\\d{1,12})$/.exec(location.hash);
+if (fromQr) { sessionStorage.setItem('pin', fromQr[1]); history.replaceState(null, '', location.pathname + location.search); }
 let pin = sessionStorage.getItem('pin') || '', lib = {books: [], categories: []}, filter = sessionStorage.getItem('filter') || 'all';
 const msg = (text, ok = false) => { const m = $('#msg'); m.className = ok ? 'good' : 'err'; m.textContent = text; };
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };

@@ -153,7 +153,7 @@ PNG, JPEG, GIF, BMP and WebP pictures are shown, shrunk to fit the page and cent
 
 ## Managing books from your phone
 
-Hold select on the library (keyboard: `m`), choose **Manage books over Wi-Fi**. The screen shows an address like `http://192.168.1.50:8080` and a 4-digit PIN. Open the address on your phone or computer (same Wi-Fi) and type the PIN. The page lists your books with their progress and lets you:
+Hold select on the library (keyboard: `m`), choose **Manage books over Wi-Fi**. The screen shows a **QR code**, an address like `http://192.168.1.50:8080` and a 4-digit PIN. Scan the code with your phone's camera (same Wi-Fi): the code holds the address and the PIN (after a `#`, which stays in the browser and never reaches the Pi, and is wiped from the address bar), so it opens already unlocked. Or open the address on any device and type the PIN. The page lists your books with their progress and lets you:
 
 - put a book in a **category** (pick one you have or make a new one) and see only that category on the reader (library options, **Show**),
 - add it to **Up next** (books you want to read) and reorder that list with the arrows (library options, **Show: Up next**, shows it in your order),
@@ -170,6 +170,10 @@ You can also run it without the reader: `python3 -m ereader.upload --books ~/boo
 ## Long chapters
 
 Books are laid out lazily: only the part you are reading, plus its neighbours, is in memory. A chapter file bigger than about 60 KB is cut into chunks of about 40 KB at paragraph ends (`CHUNK_BYTES` in `ereader/book.py`), so a huge single-chapter book opens at once and uses a few MB, not tens. Measured on a Mac with a synthetic 2 MB chapter: first page in 0.6 s (was 30 s), Python memory 5 MB (was 55 MB). Word widths are remembered per font (`Fonts.width`, up to 20,000 entries), which cut laying out a Quran chunk from 0.67 s to 0.05 s on the Mac. Pi Zero numbers will differ; time it with the `[reader] section ... pages in ...s` lines the app prints.
+
+## Third-party code
+
+`ereader/qrcodegen.py` is [Project Nayuki's QR Code generator](https://www.nayuki.io/page/qr-code-generator-library) (MIT license, header kept in the file). It draws the QR code on the Manage books screen and needs nothing installed.
 
 ## Fonts
 
