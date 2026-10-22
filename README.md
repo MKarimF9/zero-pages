@@ -159,8 +159,9 @@ Hold select on the library (keyboard: `m`), choose **Manage books over Wi-Fi**. 
 
 - put a book in a **category** (pick one you have or make a new one) and see only that category on the reader (library options, **Show**),
 - add it to **Up next** (books you want to read) and reorder that list with the arrows (library options, **Show: Up next**, shows it in your order),
+- **rename** it with *Rename* (the name is kept on the Pi; the EPUB file is not touched, and an empty name goes back to the original),
 - **move your place** with *Go to…*: pick a chapter from its contents list or type a percent. The book then opens there, and counts as the book you last read (the Continue reading card),
-- **pin** it to the top of the library, or **delete** it (the file, its place, its category and its cached covers),
+- **pin** it to the top of the library, or **delete** it (the file, its place, its category, its name and its cached covers),
 - add books: open *Add books* and pick or drag in `.epub` files.
 
 Press select on the reader when you're done. Press select on the reader when you're done: the upload server runs only while that screen is open, so nothing is listening on your network the rest of the time.

@@ -48,8 +48,10 @@ class BookManager:
             for info in self.index.scan(self.books_dir):
                 key = str(info.path)
                 status = state.status(key)
+                custom = state.get_title(key)
                 books.append({
-                    "name": info.path.name, "title": info.title, "author": info.author,
+                    "name": info.path.name, "title": custom or info.title, "author": info.author,
+                    "renamed": bool(custom), "original": info.title,
                     "size": info.path.stat().st_size, "status": status,
                     "progress": round(state.get_progress(key) * 100) if status != "new" else 0,
                     "chapter": state.get_chapter(key) if status != "new" else "",
@@ -59,13 +61,16 @@ class BookManager:
             return {"books": books, "categories": state.categories()}
 
     def update(self, name: str, changes: dict) -> None:
-        """Apply {category: str, queued: bool, pinned: bool, move: "up"|"down"|"top"}.
+        """Apply {title: str, category: str, queued: bool, pinned: bool, move: "up"|"down"|"top"}.
+        An empty title goes back to the name inside the book.
         Raises KeyError for an unknown book and ValueError for a bad value; nothing is
         changed unless every value is good."""
         key = str(self._path(name))
-        allowed = {"category", "queued", "pinned", "move"}
+        allowed = {"title", "category", "queued", "pinned", "move"}
         if not isinstance(changes, dict) or not changes or set(changes) - allowed:
             raise ValueError("Nothing to change.")
+        if "title" in changes and not isinstance(changes["title"], str):
+            raise ValueError("The name must be text.")
         if "category" in changes and not isinstance(changes["category"], str):
             raise ValueError("The category must be text.")
         for flag in ("queued", "pinned"):
@@ -75,6 +80,8 @@ class BookManager:
             raise ValueError("move must be up, down or top.")
         with self._lock:
             state = self.state
+            if "title" in changes:
+                state.set_title(key, changes["title"])
             if "category" in changes:
                 state.set_category(key, changes["category"])
             if "queued" in changes:
