@@ -340,13 +340,13 @@ PAGE = """<!doctype html>
 <div id="msg" class="err"></div>
 
 <div id="app" hidden>
-  <div id="chips"></div>
-  <div id="books"></div>
   <details class="card"><summary>Add books</summary>
     <label id="drop"><b>Choose books or drop them here</b><span class="mut">.epub files only</span>
       <input id="file" type="file" accept=".epub,application/epub+zip" multiple></label>
     <ul id="uploads"></ul>
   </details>
+  <div id="chips"></div>
+  <div id="books"></div>
 </div>
 
 <script>
