@@ -151,9 +151,16 @@ Many EPUBs put several chapters in one long file and point to each with an `#anc
 
 PNG, JPEG, GIF, BMP and WebP pictures are shown, shrunk to fit the page and centered (a picture too tall for the rest of a page moves to the next one). Photos are dithered to black and white; diagrams and scanned pages are thresholded so lines stay crisp; transparent areas become white. A picture is decoded once and cached in `~/.pi-ereader/images`, so turning back to a page is quick. Pictures that can't be shown (SVG, missing files, damaged files) appear as a labelled box with the alt text. A picture is always on its own line: small pictures inside a line of text, such as a symbol drawn as an image, are not placed inline.
 
-## Adding books over Wi-Fi
+## Managing books from your phone
 
-Hold select on the library (keyboard: `m`), choose **Add books over Wi-Fi**. The screen shows an address like `http://192.168.1.50:8080` and a 4-digit PIN. Open the address on your phone or computer (same Wi-Fi), type the PIN, then pick or drag in `.epub` files. Press select on the reader when you're done: the upload server runs only while that screen is open, so nothing is listening on your network the rest of the time.
+Hold select on the library (keyboard: `m`), choose **Manage books over Wi-Fi**. The screen shows an address like `http://192.168.1.50:8080` and a 4-digit PIN. Open the address on your phone or computer (same Wi-Fi) and type the PIN. The page lists your books with their progress and lets you:
+
+- put a book in a **category** (pick one you have or make a new one) and see only that category on the reader (library options, **Show**),
+- add it to **Up next** (books you want to read) and reorder that list with the arrows (library options, **Show: Up next**, shows it in your order),
+- **pin** it to the top of the library, or **delete** it (the file, its place, its category and its cached covers),
+- add books: open *Add books* and pick or drag in `.epub` files.
+
+Press select on the reader when you're done. Press select on the reader when you're done: the upload server runs only while that screen is open, so nothing is listening on your network the rest of the time.
 
 Safety: every request needs the PIN (5 wrong guesses lock it for a minute); only plain `.epub` file names up to 100 MB are accepted, each file must actually open as an EPUB or it's discarded, and uploads are written to a hidden temporary file first, so a half-finished upload never appears as a book. Uploading a name that already exists replaces that book.
 

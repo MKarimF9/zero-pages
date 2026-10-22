@@ -1,7 +1,8 @@
-"""Add books over Wi-Fi: a tiny web page on the Pi that accepts .epub uploads.
+"""Manage books over Wi-Fi: a tiny web page on the Pi to add .epub files and to organise
+the library (categories, an Up next list, pins, delete). The organising is in manager.py.
 
 Only the standard library is used, to keep memory low on a Pi Zero. The server
-is meant to run only while you're on the "Add books over Wi-Fi" screen (see
+is meant to run only while you're on the "Manage books over Wi-Fi" screen (see
 UploadScreen in screens.py), not all the time. You can also run it on its own:
 
     python3 -m ereader.upload --books ~/books
@@ -32,11 +33,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .epub import Epub
+from .manager import BookManager
 
 PORT = 8080
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024   # a very large EPUB; the Pi's SD card is the real limit
 DISK_RESERVE = 50 * 1024 * 1024        # always leave this much free
 MAX_FAILURES, LOCKOUT_SECONDS = 5, 60  # wrong PIN guesses allowed, then the lock
+MAX_JSON_BYTES = 4096                  # a change request is a few words
 
 
 def local_ip() -> str | None:
@@ -65,10 +68,11 @@ def safe_name(name: str) -> str | None:
 class UploadServer:
     def __init__(self, books_dir: str | Path, pin: str | None = None, host: str = "0.0.0.0",
                  port: int = PORT, max_bytes: int = MAX_UPLOAD_BYTES, lockout: float = LOCKOUT_SECONDS,
-                 clock=time.monotonic):
+                 clock=time.monotonic, manager: BookManager | None = None):
         self.books_dir = Path(books_dir).expanduser()
         self.pin = pin if pin is not None else f"{secrets.randbelow(10000):04d}"  # "" means no PIN
         self.max_bytes, self._lockout, self._clock = max_bytes, lockout, clock
+        self.manager = manager      # lists and changes books and their saved state (None: upload only)
         self.added: list[str] = []  # names uploaded this session, for the screen
         self._failures, self._locked_until = 0, 0.0
         self._lock = threading.Lock()
@@ -170,12 +174,19 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/books":
             if self._authorized():
                 self._json(200, self.app.books())
+        elif path == "/api/library":
+            if self.app.manager is None:
+                self._error(404, "Not found.")
+            elif self._authorized():
+                self._json(200, self.app.manager.library())
         else:
             self._error(404, "Not found.")
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path not in ("/api/upload", "/api/delete"):
+        if path not in ("/api/upload", "/api/delete", "/api/update"):
+            return self._error(404, "Not found.")
+        if path == "/api/update" and self.app.manager is None:
             return self._error(404, "Not found.")
         if not self._authorized():
             return
@@ -183,12 +194,36 @@ class _Handler(BaseHTTPRequestHandler):
         if name is None:
             return
         if path == "/api/delete":
-            target = self.app.books_dir / name
-            if not target.is_file():
+            try:
+                if self.app.manager:
+                    self.app.manager.delete(name)   # also forgets its place, category and cached covers
+                else:
+                    target = self.app.books_dir / name
+                    if not target.is_file():
+                        raise KeyError(name)
+                    target.unlink()
+            except KeyError:
                 return self._error(404, "No such book.")
-            target.unlink()
             return self._json(200, {"ok": True})
+        if path == "/api/update":
+            return self._update(name)
         self._upload(name)
+
+    def _update(self, name: str) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+            if not 0 < length <= MAX_JSON_BYTES:
+                raise ValueError
+            changes = json.loads(self.rfile.read(length))
+        except ValueError:
+            return self._error(400, "Send a small JSON body.")
+        try:
+            self.app.manager.update(name, changes)
+        except KeyError:
+            return self._error(404, "No such book.")
+        except ValueError as e:
+            return self._error(400, str(e))
+        self._json(200, {"ok": True})
 
     def _upload(self, name: str) -> None:
         app = self.app
@@ -253,46 +288,59 @@ def _is_epub(path: Path) -> bool:
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Add books</title>
+<title>Your books</title>
 <style>
   :root { --bg:#f6f5f1; --fg:#1c1b19; --mut:#6b6a66; --line:#d8d6cf; --card:#fff; --acc:#1c1b19; --bad:#b3261e; --ok:#1d6b3a; }
   @media (prefers-color-scheme: dark) { :root { --bg:#161513; --fg:#ecebe6; --mut:#9a9890; --line:#34322e; --card:#1f1e1b; --acc:#ecebe6; --bad:#f2b8b5; --ok:#8fd1a4; } }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.45 system-ui, sans-serif; }
-  main { max-width:640px; margin:0 auto; padding:24px 16px 48px; }
-  h1 { font-size:22px; margin:0 0 4px; } p.sub { color:var(--mut); margin:0 0 20px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
-  #drop { display:block; text-align:center; border:2px dashed var(--line); border-radius:12px; padding:32px 12px; cursor:pointer; }
-  #drop.over { border-color:var(--acc); } #drop b { display:block; font-size:17px; margin-bottom:4px; }
+  main { max-width:640px; margin:0 auto; padding:20px 16px 56px; }
+  h1 { font-size:22px; margin:0 0 4px; } p.sub { color:var(--mut); margin:0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
   input[type=file] { display:none; }
-  input[type=password], input[type=text] { font:inherit; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); width:8em; }
-  button { font:inherit; padding:9px 14px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; }
+  input[type=password], input[type=text], select { font:inherit; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); max-width:100%; }
+  input[type=password] { width:8em; }
+  button { font:inherit; font-size:14px; padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; min-height:38px; }
   button.primary { background:var(--acc); color:var(--bg); border-color:var(--acc); }
-  ul { list-style:none; margin:0; padding:0; } li { display:flex; gap:12px; align-items:center; padding:10px 0; border-top:1px solid var(--line); }
-  li:first-child { border-top:0; } li .n { flex:1; min-width:0; overflow-wrap:anywhere; } li .s { color:var(--mut); font-size:14px; white-space:nowrap; }
+  button.on { background:var(--acc); color:var(--bg); border-color:var(--acc); }
+  button.del { color:var(--bad); }
+  #chips { display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; margin-bottom:10px; }
+  #chips button { white-space:nowrap; border-radius:999px; }
+  .book h3 { font-size:17px; margin:0; overflow-wrap:anywhere; } .book .au { color:var(--mut); font-size:14px; overflow-wrap:anywhere; }
+  .book .st { color:var(--mut); font-size:14px; margin:6px 0 4px; overflow-wrap:anywhere; }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-bottom:10px; } .bar i { display:block; height:100%; background:var(--acc); }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px; }
+  .tag { font-size:12px; border:1px solid var(--line); border-radius:999px; padding:1px 8px; color:var(--mut); }
+  #drop { display:block; text-align:center; border:2px dashed var(--line); border-radius:12px; padding:22px 12px; cursor:pointer; }
+  #drop.over { border-color:var(--acc); } #drop b { display:block; margin-bottom:2px; }
+  ul { list-style:none; margin:0; padding:0; } li.up { display:flex; gap:12px; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
+  li.up:first-child { border-top:0; } li.up .n { flex:1; min-width:0; overflow-wrap:anywhere; } li.up .s { color:var(--mut); font-size:14px; white-space:nowrap; }
   progress { width:100%; height:6px; } .err { color:var(--bad); } .good { color:var(--ok); } .mut { color:var(--mut); }
-  #msg { min-height:1.4em; }
+  #msg { min-height:1.4em; margin-bottom:8px; } details > summary { cursor:pointer; font-weight:600; }
 </style></head><body><main>
-<h1>Add books</h1><p class="sub" id="sub">Drop .epub files here to send them to your e-reader.</p>
+<h1>Your books</h1><p class="sub" id="sub">Organise what is on your e-reader.</p>
 
 <div class="card" id="pinbox" hidden>
   <label for="pin">PIN shown on the e-reader</label><br>
   <input id="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="12">
   <button class="primary" id="go">Unlock</button>
 </div>
+<div id="msg" class="err"></div>
 
 <div id="app" hidden>
-  <label id="drop" class="card"><b>Choose books or drop them here</b><span class="mut">.epub files only</span>
-    <input id="file" type="file" accept=".epub,application/epub+zip" multiple></label>
-  <div class="card" id="queue" hidden><ul id="uploads"></ul></div>
-  <div id="msg" class="err"></div>
-  <div class="card"><b>On your e-reader</b> <span class="mut" id="count"></span><ul id="books"></ul></div>
+  <div id="chips"></div>
+  <div id="books"></div>
+  <details class="card"><summary>Add books</summary>
+    <label id="drop"><b>Choose books or drop them here</b><span class="mut">.epub files only</span>
+      <input id="file" type="file" accept=".epub,application/epub+zip" multiple></label>
+    <ul id="uploads"></ul>
+  </details>
 </div>
 
 <script>
 const $ = s => document.querySelector(s);
-let pin = sessionStorage.getItem('pin') || '';
-const fmt = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+let pin = sessionStorage.getItem('pin') || '', lib = {books: [], categories: []}, filter = sessionStorage.getItem('filter') || 'all';
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 
 async function api(path, opts = {}) {
   opts.headers = Object.assign({'X-PIN': pin}, opts.headers || {});
@@ -300,33 +348,77 @@ async function api(path, opts = {}) {
   if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), {status: r.status});
   return j;
 }
+const change = async (name, body) => {
+  try { await api('/api/update?name=' + encodeURIComponent(name), {method: 'POST', body: JSON.stringify(body)}); $('#msg').textContent = ''; }
+  catch (e) { $('#msg').textContent = e.message; }
+  refresh();
+};
 function show(unlocked) { $('#pinbox').hidden = unlocked; $('#app').hidden = !unlocked; }
+
+const FILTERS = [['all', 'All'], ['want', 'Up next'], ['reading', 'Reading'], ['new', 'New'], ['finished', 'Finished']];
+function matches(b) {
+  if (filter === 'all') return true;
+  if (filter === 'want') return b.queued;
+  if (filter.startsWith('cat:')) return b.category === filter.slice(4);
+  return b.status === filter;
+}
+function drawChips() {
+  const chips = $('#chips'); chips.innerHTML = '';
+  const all = FILTERS.concat(lib.categories.map(c => ['cat:' + c, c]));
+  if (!all.some(f => f[0] === filter)) filter = 'all';
+  for (const [key, label] of all) {
+    const n = lib.books.filter(b => { const old = filter; filter = key; const m = matches(b); filter = old; return m; }).length;
+    chips.append(el('button', {className: key === filter ? 'on' : '', textContent: label + ' ' + n,
+      onclick: () => { filter = key; sessionStorage.setItem('filter', key); drawBooks(); drawChips(); }}));
+  }
+}
+function card(b) {
+  const status = b.status === 'new' ? 'New' : b.status === 'finished' ? 'Finished' : 'Reading · ' + b.progress + '%';
+  const where = b.status === 'reading' && b.chapter ? ' · ' + b.chapter : '';
+  const sel = el('select', {onchange: e => {
+    let v = e.target.value;
+    if (v === '__new') { v = (prompt('Category name') || '').trim(); if (!v) return refresh(); }
+    change(b.name, {category: v === '__none' ? '' : v});
+  }});
+  sel.append(el('option', {value: '__none', textContent: 'No category'}));
+  for (const c of lib.categories) sel.append(el('option', {value: c, textContent: c, selected: c === b.category}));
+  sel.append(el('option', {value: '__new', textContent: 'New category…'}));
+  if (!b.category) sel.value = '__none';
+  const row = el('div', {className: 'row'},
+    el('button', {className: b.queued ? 'on' : '', textContent: b.queued ? 'Up next #' + b.queue_position : 'Up next', onclick: () => change(b.name, {queued: !b.queued})}),
+    el('button', {className: b.pinned ? 'on' : '', textContent: b.pinned ? 'Pinned' : 'Pin', onclick: () => change(b.name, {pinned: !b.pinned})}),
+    sel);
+  if (b.queued && filter === 'want') row.append(
+    el('button', {textContent: '▲', title: 'Move up', onclick: () => change(b.name, {move: 'up'})}),
+    el('button', {textContent: '▼', title: 'Move down', onclick: () => change(b.name, {move: 'down'})}));
+  row.append(el('button', {className: 'del', textContent: 'Delete', onclick: async () => {
+    if (!confirm('Delete ' + b.title + '? This removes the file from the e-reader.')) return;
+    try { await api('/api/delete?name=' + encodeURIComponent(b.name), {method: 'POST'}); } catch (e) { $('#msg').textContent = e.message; }
+    refresh();
+  }}));
+  return el('div', {className: 'card book'},
+    el('h3', {dir: 'auto', textContent: b.title}), el('div', {className: 'au', dir: 'auto', textContent: b.author}),
+    el('div', {className: 'st', dir: 'auto', textContent: status + where}),
+    el('div', {className: 'bar'}, el('i', {style: 'width:' + b.progress + '%'})), row);
+}
+function drawBooks() {
+  const box = $('#books'); box.innerHTML = '';
+  let list = lib.books.filter(matches);
+  if (filter === 'want') list.sort((a, b) => a.queue_position - b.queue_position);
+  else list.sort((a, b) => (b.pinned - a.pinned) || a.title.localeCompare(b.title));
+  if (!list.length) box.append(el('p', {className: 'mut', textContent: lib.books.length ? 'No books here yet.' : 'No books yet. Add some below.'}));
+  for (const b of list) box.append(card(b));
+}
 async function refresh() {
-  try {
-    const books = await api('/api/books'); show(true);
-    $('#count').textContent = books.length ? '(' + books.length + ')' : '';
-    const ul = $('#books'); ul.innerHTML = '';
-    if (!books.length) ul.innerHTML = '<li class="mut">No books yet.</li>';
-    for (const b of books) {
-      const li = document.createElement('li');
-      li.innerHTML = '<span class="n" dir="auto"></span><span class="s"></span><button>Delete</button>';
-      li.querySelector('.n').textContent = b.name; li.querySelector('.s').textContent = fmt(b.size);
-      li.querySelector('button').onclick = async () => {
-        if (!confirm('Delete ' + b.name + '?')) return;
-        try { await api('/api/delete?name=' + encodeURIComponent(b.name), {method: 'POST'}); } catch (e) { $('#msg').textContent = e.message; }
-        refresh();
-      };
-      ul.appendChild(li);
-    }
-  } catch (e) {
+  try { lib = await api('/api/library'); show(true); drawChips(); drawBooks(); }
+  catch (e) {
     if (e.status === 403 || e.status === 429) { show(false); $('#msg').textContent = pin ? e.message : ''; if (pin) { pin = ''; sessionStorage.removeItem('pin'); } }
     else $('#msg').textContent = e.message;
   }
 }
 function send(file) {
-  const li = document.createElement('li');
-  li.innerHTML = '<span class="n" dir="auto"></span><span class="s">waiting</span><progress max="1" value="0"></progress>';
-  li.querySelector('.n').textContent = file.name; $('#uploads').appendChild(li); $('#queue').hidden = false;
+  const li = el('li', {className: 'up'}, el('span', {className: 'n', dir: 'auto', textContent: file.name}), el('span', {className: 's', textContent: 'waiting'}), el('progress', {max: 1, value: 0}));
+  $('#uploads').append(li);
   const status = li.querySelector('.s'), bar = li.querySelector('progress');
   return new Promise(done => {
     const x = new XMLHttpRequest();
@@ -335,9 +427,9 @@ function send(file) {
     x.upload.onprogress = e => { if (e.lengthComputable) { bar.value = e.loaded / e.total; status.textContent = Math.round(100 * e.loaded / e.total) + '%'; } };
     x.onload = () => {
       let j = {}; try { j = JSON.parse(x.responseText); } catch (_) {}
-      if (x.status === 200) { status.textContent = j.replaced ? 'replaced' : 'added'; status.className = 's good'; bar.remove(); }
-      else { status.textContent = j.error || 'failed'; status.className = 's err'; bar.remove(); }
-      done();
+      if (x.status === 200) { status.textContent = j.replaced ? 'replaced' : 'added'; status.className = 's good'; }
+      else { status.textContent = j.error || 'failed'; status.className = 's err'; }
+      bar.remove(); done();
     };
     x.onerror = () => { status.textContent = 'connection lost'; status.className = 's err'; done(); };
     x.send(file);
@@ -366,7 +458,9 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--pin", default=None, help="PIN to require (default: a random one; '' for none)")
     args = ap.parse_args()
-    server = UploadServer(args.books, pin=args.pin, port=args.port)
+    from .state import ReadingState
+    server = UploadServer(args.books, pin=args.pin, port=args.port,
+                          manager=BookManager(args.books, ReadingState()))
     server.start()
     ip = local_ip() or "<this device's address>"
     print(f"Open http://{ip}:{server.port} in a browser" + (f"  (PIN: {server.pin})" if server.pin else "  (no PIN!)"), flush=True)

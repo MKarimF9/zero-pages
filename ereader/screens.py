@@ -28,6 +28,7 @@ from .cache import forget_book
 from .covers import THUMB_SIZE, cached_cover
 from .layout import MARGIN, text_is_rtl
 from .library import BookIndex
+from .manager import BookManager
 from .page import Page, PlacedImage, PlacedWord
 from .state import ReadingState
 from .upload import PORT, UploadServer, local_ip
@@ -464,7 +465,7 @@ class LibraryOptionsScreen(Screen):
         return [("sort", "sort", "Sort by", SORTS[state.get_setting("library_sort", "recent")]),
                 ("filter", "filter_list", "Show", choices.get(state.get_setting("library_filter", "all"), "All")),
                 ("sleep", "bedtime", "Sleep screen", SLEEP_SCREENS[state.get_setting("sleep_screen", "cover")]),
-                ("upload", "cloud_upload", "Add books over Wi-Fi", ""),
+                ("upload", "cloud_upload", "Manage books over Wi-Fi", ""),
                 ("back", "arrow_back", "Back to library", "")]
 
     def render(self) -> Image.Image:
@@ -508,7 +509,8 @@ class UploadScreen(Screen):
             self.error = "No Wi-Fi connection found."
         else:
             try:
-                self.server = UploadServer(ctx.books_dir, port=port)  # a fresh random PIN each time
+                self.server = UploadServer(ctx.books_dir, port=port,   # a fresh random PIN each time
+                                           manager=BookManager(ctx.books_dir, ctx.state))
                 self.server.start()
             except OSError as e:
                 self.error = f"Couldn't start the server: {e.strerror or e}"
@@ -520,7 +522,7 @@ class UploadScreen(Screen):
     def render(self) -> Image.Image:
         ctx, ui, small = self.ctx, self.ctx.ui_fonts, self.ctx.small
         img = blank(ctx)
-        d, top, _ = list_frame(img, ui, "Add books", icon="wifi" if self.server else "wifi_off",
+        d, top, _ = list_frame(img, ui, "Manage books", icon="wifi" if self.server else "wifi_off",
                                labels=("Refresh", "Done", "Refresh"))
         w, x = ctx.width, PAD
         if self.error:
