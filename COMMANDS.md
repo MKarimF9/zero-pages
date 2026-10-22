@@ -384,7 +384,7 @@ On the contents screen, hold select until the header says `jump: parts` to move 
 
 ## 14. Flash cards and quotes
 
-For things you want to remember: a quote, a verse, a word and its meaning, a question and its answer. Text only for now (pictures may come later).
+For things you want to remember: a quote, a verse, a word and its meaning, a question and its answer. Cards can have text, a picture, or both.
 
 A **card** has a **front**, an optional **back** and an optional **source** (for example *Sahih al-Bukhari 1*), and lives in a **deck** (for example *Quotes*, *Arabic words*). A card with no back is a **quote**. Arabic and English both work, including a line of each.
 
@@ -393,15 +393,17 @@ A **card** has a **front**, an optional **back** and an optional **source** (for
 | Button | Does |
 |---|---|
 | **Add card** | adds it to the deck named in *Deck* (a new name makes a new deck; *quotes* and *Quotes* are the same deck) |
+| **Picture on the front / back** | optional; pick a photo or screenshot from your phone. The phone shrinks it first (so even a big photo uploads quickly), and the Pi keeps a grayscale copy of at most 600 x 450 px. Works for PNG, JPEG, GIF, WebP, BMP (an iPhone's HEIC photo is converted by the browser) |
 | **Import many cards** | paste lines, or choose a `.txt` / `.tsv` file; one card per line: `front`, a tab, `back`, a tab, `source` (back and source are optional). Anki's *File, Export, Notes in plain text* gives this shape; HTML in it (`<br>`, `<b>`) is turned into plain text and its `#separator` header lines are skipped. They go into the deck in *Deck* |
 | Deck chips | show one deck; the number is how many cards, and how many are due |
-| **Edit** / **Delete** | change or remove a card (asks before deleting) |
+| **Edit** / **Delete** | change or remove a card (asks before deleting). In *Edit* you can replace a picture or **Remove picture**; deleting a card deletes its pictures too |
 | **Delete this deck** | removes the deck and all its cards (asks first) |
 
 **Use them on the reader.** Library, hold select (`m`), *Flash cards and quotes*, pick a deck:
 - **Review** shows the cards that are due. Select shows the answer; then up = *Forgot*, down = *Got it*. A forgotten card comes back before you finish; a known card comes back later (1, 3, 7, 14, then 30 days). New cards are due at once. A quote (no back) just shows with its source; select = *Next*.
 - **Browse all** pages through every card (up / down), select shows the answer.
+- **Pictures** are drawn above their text, as big as the text leaves room for: diagrams and drawings stay crisp (thresholded), photos are dithered into black and white dots. Photos with fine detail look coarse on a 400 x 300 black-and-white screen; diagrams, drawings, maps and handwriting look good. A card with only a back picture still counts as a question with an answer. When the answer has its own picture, the question's picture is left out once you show the answer, so the answer's picture gets the room.
 
-Limits: 5000 cards, a front up to 1000 characters, a back up to 2000, a source up to 200. Text too long for the screen is shrunk (down to 14 px) and then cut with "…".
+Limits: 5000 cards, a front up to 1000 characters (it can't be empty: type a word such as *?* for a picture-only question), a back up to 2000, a source up to 200, a picture up to 4 MB as sent. Text too long for the screen is shrunk (down to 14 px) and then cut with "…".
 
-Where it is kept: `~/.pi-ereader/cards.json` (back it up with your books). The reader and the phone page share it. Deleting a book does not touch your cards.
+Where it is kept: `~/.pi-ereader/cards.json` and the pictures in `~/.pi-ereader/card-images/` (back both up with your books). The reader and the phone page share it. Deleting a book does not touch your cards.

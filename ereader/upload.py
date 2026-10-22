@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import hmac
+import io
 import json
 import os
 import secrets
@@ -32,6 +33,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from PIL import Image
+
 from .epub import Epub
 from .manager import BookManager
 
@@ -42,6 +45,8 @@ MAX_FAILURES, LOCKOUT_SECONDS = 5, 60  # wrong PIN guesses allowed, then the loc
 MAX_JSON_BYTES = 4096                  # a change request is a few words
 MAX_CARD_BYTES = 16 * 1024             # one card: up to 1000 + 2000 characters, in any script
 MAX_IMPORT_BYTES = 512 * 1024          # a pasted list of cards
+MAX_PICTURE_BYTES = 4 * 1024 * 1024    # one card picture (the phone page shrinks photos first)
+THUMB_SIZE = (160, 160)                # the small preview on the phone page
 
 
 def local_ip() -> str | None:
@@ -193,8 +198,14 @@ class _Handler(BaseHTTPRequestHandler):
                 store = self.app.manager.cards
                 now = time.time()
                 self._json(200, {"decks": store.decks(now), "cards": [
-                    {k: c.get(k, "") for k in ("id", "deck", "front", "back", "source")} | {"due": c.get("due", 0) <= now}
+                    {k: c.get(k, "") for k in ("id", "deck", "front", "back", "source")}
+                    | {"due": c.get("due", 0) <= now, "image": bool(c.get("image")), "back_image": bool(c.get("back_image"))}
                     for c in store.all()]})
+        elif path == "/api/cards/image":
+            if self.app.manager is None:
+                self._error(404, "Not found.")
+            elif self._authorized():
+                self._card_picture()
         elif path == "/api/library":
             if self.app.manager is None:
                 self._error(404, "Not found.")
@@ -251,10 +262,31 @@ class _Handler(BaseHTTPRequestHandler):
             return None
         return self.rfile.read(length)
 
+    def _card_picture(self) -> None:
+        """GET /api/cards/image?id=..&side=front|back[&thumb=1]: the kept picture as a PNG."""
+        store = self.app.manager.cards
+        query = parse_qs(urlparse(self.path).query)
+        card = store.get(query.get("id", [""])[0])
+        picture = store.picture_path(card, query.get("side", [""])[0]) if card else None
+        if picture is None:
+            return self._error(404, "No such picture.")
+        try:
+            if "thumb" in query:
+                with Image.open(picture) as img:
+                    img.thumbnail(THUMB_SIZE)
+                    out = io.BytesIO()
+                    img.save(out, format="PNG")
+                    body = out.getvalue()
+            else:
+                body = picture.read_bytes()
+        except OSError:
+            return self._error(404, "No such picture.")
+        self._send(200, body, "image/png")
+
     def _cards(self, path: str) -> None:
         """/api/cards/add, update, delete, import: flash cards and quotes."""
-        if path not in ("/api/cards/add", "/api/cards/update", "/api/cards/delete", "/api/cards/import") \
-                or self.app.manager is None:
+        if path not in ("/api/cards/add", "/api/cards/update", "/api/cards/delete", "/api/cards/import",
+                        "/api/cards/image", "/api/cards/image-remove") or self.app.manager is None:
             return self._error(404, "Not found.")
         if not self._authorized():
             return
@@ -265,6 +297,16 @@ class _Handler(BaseHTTPRequestHandler):
                 if "deck" in query:
                     return self._json(200, {"ok": True, "deleted": store.delete_deck(query["deck"][0])})
                 store.delete(query.get("id", [""])[0])
+                return self._json(200, {"ok": True})
+            side = query.get("side", [""])[0]
+            if path == "/api/cards/image-remove":
+                store.remove_picture(query.get("id", [""])[0], side)
+                return self._json(200, {"ok": True})
+            if path == "/api/cards/image":
+                raw = self._body(MAX_PICTURE_BYTES)
+                if raw is None:
+                    return
+                store.set_picture(query.get("id", [""])[0], side, raw)
                 return self._json(200, {"ok": True})
             if path == "/api/cards/import":
                 raw = self._body(MAX_IMPORT_BYTES)
@@ -402,6 +444,7 @@ PAGE = """<!doctype html>
   textarea { font:inherit; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); width:100%; min-height:5em; resize:vertical; }
   input[type=text].wide { width:100%; } label.f { display:block; font-size:14px; color:var(--mut); margin-top:10px; }
   .tabs { display:flex; gap:8px; margin-bottom:14px; } .tabs button { flex:1; }
+  .thumb { display:block; max-width:160px; max-height:160px; border:1px solid var(--line); border-radius:6px; margin:0 0 6px; background:#fff; }
   .face { white-space:pre-wrap; overflow-wrap:anywhere; } .face.back { color:var(--mut); border-top:1px solid var(--line); margin-top:8px; padding-top:8px; }
   #msg { min-height:1.4em; margin-bottom:8px; } details > summary { cursor:pointer; font-weight:600; }
 </style></head><body><main>
@@ -436,6 +479,10 @@ PAGE = """<!doctype html>
       <textarea id="cfront" dir="auto" maxlength="1000"></textarea>
       <label class="f" for="cback">Back (the answer; leave empty for a quote)</label>
       <textarea id="cback" dir="auto" maxlength="2000"></textarea>
+      <label class="f" for="cpicf">Picture on the front (optional)</label>
+      <input id="cpicf" type="file" accept="image/*" style="display:block">
+      <label class="f" for="cpicb">Picture on the back (optional)</label>
+      <input id="cpicb" type="file" accept="image/*" style="display:block">
       <label class="f" for="csrc">Source (optional)</label>
       <input id="csrc" class="wide" type="text" dir="auto" maxlength="200">
       <div class="row"><button class="primary" id="cadd">Add card</button></div>
@@ -566,6 +613,7 @@ async function refreshCards() {
   try { cards = await api('/api/cards'); drawCards(); } catch (e) { msg(e.message); }
 }
 function drawCards() {
+  while (thumbs.length) URL.revokeObjectURL(thumbs.pop());
   const names = cards.decks.map(d => d.name);
   if (deckFilter && !names.includes(deckFilter)) deckFilter = '';
   const list = $('#decklist'); list.innerHTML = '';
@@ -587,6 +635,28 @@ function drawCards() {
   }})));
   for (const c of shown) box.append(cardItem(c));
 }
+// The phone shrinks the picture first (a photo is several MB; the reader shows it at most 400 pixels wide),
+// and turns any format it can show (HEIC from an iPhone, say) into a JPEG the reader can read.
+async function shrink(file) {
+  try {
+    const bmp = await createImageBitmap(file), k = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+    const cv = el('canvas', {width: Math.round(bmp.width * k), height: Math.round(bmp.height * k)});
+    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(bmp, 0, 0, cv.width, cv.height);
+    return await new Promise(ok => cv.toBlob(b => ok(b || file), 'image/jpeg', 0.88));
+  } catch (_) { return file; }
+}
+async function sendPicture(id, side, file) {
+  await api('/api/cards/image?id=' + encodeURIComponent(id) + '&side=' + side, {method: 'POST', body: await shrink(file)});
+}
+const thumbs = [];
+async function thumb(c, side) {
+  const img = el('img', {className: 'thumb', alt: side === 'front' ? 'Picture on the front' : 'Picture on the back'});
+  try {
+    const r = await fetch('/api/cards/image?thumb=1&side=' + side + '&id=' + encodeURIComponent(c.id), {headers: {'X-PIN': pin}});
+    if (r.ok) { img.src = URL.createObjectURL(await r.blob()); thumbs.push(img.src); }
+  } catch (_) {}
+  return img;
+}
 function cardItem(c) {
   const box = el('div', {className: 'card book'});
   const del = async () => {
@@ -598,17 +668,38 @@ function cardItem(c) {
     const deck = el('input', {type: 'text', className: 'wide', value: c.deck, maxLength: 40});
     const front = el('textarea', {value: c.front, dir: 'auto'}), back = el('textarea', {value: c.back, dir: 'auto'});
     const src = el('input', {type: 'text', className: 'wide', value: c.source, dir: 'auto'});
+    const pic = (side, has) => {
+      const file = el('input', {type: 'file', accept: 'image/*', style: 'display:block;margin-top:6px'});
+      const host = el('div', {});
+      const row = el('div', {className: 'row'}, el('span', {className: 'mut', textContent: has ? 'Has a picture. Choose another to replace it:' : 'No picture. Choose one:'}));
+      if (has) row.append(el('button', {className: 'del', textContent: 'Remove picture', onclick: async () => {
+        try { await api('/api/cards/image-remove?id=' + encodeURIComponent(c.id) + '&side=' + side, {method: 'POST'}); msg(''); refreshCards(); } catch (e) { msg(e.message); }
+      }}));
+      host.append(row, file);
+      return [host, file];
+    };
+    const [fhost, ffile] = pic('front', c.image), [bhost, bfile] = pic('back', c.back_image);
     box.innerHTML = '';
-    box.append(el('label', {className: 'f', textContent: 'Deck'}), deck, el('label', {className: 'f', textContent: 'Front'}), front,
-      el('label', {className: 'f', textContent: 'Back'}), back, el('label', {className: 'f', textContent: 'Source'}), src,
+    box.append(el('label', {className: 'f', textContent: 'Deck'}), deck, el('label', {className: 'f', textContent: 'Front'}), front, fhost,
+      el('label', {className: 'f', textContent: 'Back'}), back, bhost, el('label', {className: 'f', textContent: 'Source'}), src,
       el('div', {className: 'row'}, el('button', {className: 'primary', textContent: 'Save', onclick: async () => {
         try { await api('/api/cards/update?id=' + encodeURIComponent(c.id), {method: 'POST',
-          body: JSON.stringify({deck: deck.value, front: front.value, back: back.value, source: src.value})}); msg(''); refreshCards(); }
+          body: JSON.stringify({deck: deck.value, front: front.value, back: back.value, source: src.value})});
+          if (ffile.files[0]) await sendPicture(c.id, 'front', ffile.files[0]);
+          if (bfile.files[0]) await sendPicture(c.id, 'back', bfile.files[0]);
+          msg(''); refreshCards(); }
         catch (e) { msg(e.message); }
       }}), el('button', {textContent: 'Cancel', onclick: () => refreshCards()})));
   };
-  box.append(el('div', {className: 'face', dir: 'auto', textContent: c.front}));
-  if (c.back) box.append(el('div', {className: 'face back', dir: 'auto', textContent: c.back}));
+  const front = el('div', {}), back = el('div', {className: 'face back'});
+  if (c.image) thumb(c, 'front').then(i => front.prepend(i));
+  front.append(el('div', {className: 'face', dir: 'auto', textContent: c.front}));
+  box.append(front);
+  if (c.back || c.back_image) {
+    if (c.back_image) thumb(c, 'back').then(i => back.prepend(i));
+    if (c.back) back.append(el('div', {dir: 'auto', textContent: c.back}));
+    box.append(back);
+  }
   if (c.source) box.append(el('div', {className: 'au', dir: 'auto', textContent: c.source}));
   box.append(el('div', {className: 'row'}, el('span', {className: 'tag', textContent: c.deck}),
     el('span', {className: 'tag', textContent: c.due ? 'due' : 'later'}),
@@ -618,9 +709,16 @@ function cardItem(c) {
 $('#cadd').onclick = async () => {
   const body = {deck: $('#cdeck').value, front: $('#cfront').value, back: $('#cback').value, source: $('#csrc').value};
   try {
-    await api('/api/cards/add', {method: 'POST', body: JSON.stringify(body)});
+    const made = await api('/api/cards/add', {method: 'POST', body: JSON.stringify(body)});
     sessionStorage.setItem('cdeck', body.deck.trim()); deckFilter = body.deck.trim() || deckFilter;
-    $('#cfront').value = ''; $('#cback').value = ''; $('#csrc').value = ''; msg('Card added to ' + body.deck.trim() + '.', true);
+    $('#cfront').value = ''; $('#cback').value = ''; $('#csrc').value = '';
+    const fp = $('#cpicf').files[0], bp = $('#cpicb').files[0];
+    try {
+      if (fp) await sendPicture(made.id, 'front', fp);
+      if (bp) await sendPicture(made.id, 'back', bp);
+      $('#cpicf').value = ''; $('#cpicb').value = '';
+      msg('Card added to ' + body.deck.trim() + '.', true);
+    } catch (e) { msg('The card was added, but its picture was not: ' + e.message); }
   } catch (e) { msg(e.message); }
   refreshCards();
 };

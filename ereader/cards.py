@@ -18,11 +18,14 @@ import threading
 import time
 from pathlib import Path
 
+from .images import prepare_picture
+
 MAX_CARDS = 5000
 MAX_FRONT, MAX_BACK, MAX_SOURCE, MAX_DECK = 1000, 2000, 200, 40
 BOX_DAYS = (0, 1, 3, 7, 14, 30)   # days until a card in each box comes back
 GRACE = 4 * 3600                  # a card due "tomorrow" is due from 4 hours early, so a daily habit works
 FIELDS = ("deck", "front", "back", "source")
+SIDES = {"front": "image", "back": "back_image"}   # which side a picture belongs to: the card's flag for it
 
 
 def plain(text: str) -> str:
@@ -49,6 +52,7 @@ class CardStore:
     def __init__(self, path: str | Path):
         self.path = Path(path).expanduser()
         self._lock = threading.RLock()   # the reader and the web page both use one store
+        self.images_dir = self.path.parent / "card-images"   # <card id>-front.png, <card id>-back.png
         self._cards: list[dict] = []
         try:
             data = json.loads(self.path.read_text())
@@ -159,13 +163,60 @@ class CardStore:
             if len(self._cards) == before:
                 raise KeyError(card_id)
             self._save()
+            self._remove_files(card_id)
 
     def delete_deck(self, deck: str) -> int:
         with self._lock:
-            before = len(self._cards)
+            gone = [c["id"] for c in self._cards if c["deck"] == deck]
             self._cards = [c for c in self._cards if c["deck"] != deck]
             self._save()
-            return before - len(self._cards)
+            for card_id in gone:
+                self._remove_files(card_id)
+            return len(gone)
+
+    # ---- pictures
+
+    def picture_path(self, card: dict, side: str) -> Path | None:
+        """The kept picture of one side ("front" or "back") of a card, if it has one."""
+        if side in SIDES and card.get(SIDES[side]):
+            path = self.images_dir / f"{card['id']}-{side}.png"
+            return path if path.is_file() else None
+        return None
+
+    def _remove_files(self, card_id: str) -> None:
+        for side in SIDES:
+            (self.images_dir / f"{card_id}-{side}.png").unlink(missing_ok=True)
+
+    def set_picture(self, card_id: str, side: str, data: bytes) -> None:
+        """Keep a picture (the bytes of a PNG, JPEG, GIF, WebP or BMP) on one side of a card,
+        replacing the old one. KeyError for an unknown card, ValueError for a bad side or picture."""
+        if side not in SIDES:
+            raise ValueError("The side must be front or back.")
+        with self._lock:
+            card = next((c for c in self._cards if c["id"] == card_id), None)
+            if card is None:
+                raise KeyError(card_id)
+            gray = prepare_picture(data)
+            try:
+                self.images_dir.mkdir(parents=True, exist_ok=True)
+                tmp = self.images_dir / f".{card_id}-{side}.tmp"
+                gray.save(tmp, format="PNG", optimize=True)
+                os.replace(tmp, self.images_dir / f"{card_id}-{side}.png")   # whole or not at all
+            except OSError as e:
+                raise ValueError(f"Couldn't save the picture: {e.strerror or e}") from e
+            card[SIDES[side]] = True
+            self._save()
+
+    def remove_picture(self, card_id: str, side: str) -> None:
+        if side not in SIDES:
+            raise ValueError("The side must be front or back.")
+        with self._lock:
+            card = next((c for c in self._cards if c["id"] == card_id), None)
+            if card is None:
+                raise KeyError(card_id)
+            card.pop(SIDES[side], None)
+            (self.images_dir / f"{card_id}-{side}.png").unlink(missing_ok=True)
+            self._save()
 
     def review(self, card_id: str, good: bool, now: float | None = None) -> None:
         """Record an answer: a known card moves up a box, a forgotten one goes back to box 0."""
