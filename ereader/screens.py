@@ -510,7 +510,8 @@ class UploadScreen(Screen):
         else:
             try:
                 self.server = UploadServer(ctx.books_dir, port=port,   # a fresh random PIN each time
-                                           manager=BookManager(ctx.books_dir, ctx.state))
+                                           manager=BookManager(ctx.books_dir, ctx.state, layout=(
+                                               ctx.fonts, ctx.width, ctx.height - STATUS_BAR_HEIGHT, 6)))
                 self.server.start()
             except OSError as e:
                 self.error = f"Couldn't start the server: {e.strerror or e}"

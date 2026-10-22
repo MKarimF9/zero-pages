@@ -12,7 +12,10 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
+from .book import LazyBook
 from .cache import forget_book
+from .epub import Epub
+from .fonts import Fonts
 from .library import BookIndex
 from .state import ReadingState
 
@@ -20,9 +23,13 @@ MOVES = ("up", "down", "top")
 
 
 class BookManager:
-    def __init__(self, books_dir: str | Path, state: ReadingState, index: BookIndex | None = None):
+    def __init__(self, books_dir: str | Path, state: ReadingState, index: BookIndex | None = None,
+                 layout: tuple[Fonts, int, int, int] | None = None):
+        """layout = (fonts, page width, page height, bottom margin) as the reader lays pages out;
+        needed only to move your place (set_position)."""
         self.books_dir = Path(books_dir).expanduser()
         self.state = state
+        self.layout = layout
         self.index = index or BookIndex(state.path.parent / "library.json")
         self._lock = threading.Lock()   # web requests run in several threads
 
@@ -84,3 +91,49 @@ class BookManager:
             path.unlink()
             self.state.forget(str(path))
             forget_book(self.state.path.parent, path)
+
+    def chapters(self, name: str) -> list[dict]:
+        """The book's contents list: [{i, title, level}], i being its index for set_position."""
+        path = self._path(name)
+        epub = Epub(path)
+        try:
+            epub.open()
+            return [{"i": i, "title": e.title, "level": e.level} for i, e in enumerate(epub.toc)]
+        except Exception:
+            return []
+        finally:
+            epub.close()
+
+    def set_position(self, name: str, where: dict) -> dict:
+        """Move your place in a book: {chapter: index into chapters()} or {percent: 0..100}.
+        The book then continues from there, and counts as the one you last read."""
+        path = self._path(name)
+        if not self.layout:
+            raise ValueError("This reader can't move your place.")
+        if not isinstance(where, dict) or len(where) != 1 or not set(where) <= {"chapter", "percent"}:
+            raise ValueError("Give a chapter or a percent.")
+        fonts, width, height, bottom = self.layout
+        with self._lock:
+            try:
+                book = LazyBook(path, fonts, width, height, bottom_margin=bottom,
+                                cache_dir=self.state.path.parent)
+            except Exception as e:
+                raise ValueError(f"Couldn't open the book: {e}") from e
+            try:
+                if "chapter" in where:
+                    i = where["chapter"]
+                    if isinstance(i, bool) or not isinstance(i, int) or not 0 <= i < len(book.epub.toc):
+                        raise ValueError("No such chapter.")
+                    book.goto_entry(i)
+                else:
+                    pct = where["percent"]
+                    if isinstance(pct, bool) or not isinstance(pct, (int, float)) or not 0 <= pct <= 100:
+                        raise ValueError("The percent must be between 0 and 100.")
+                    book.goto_fraction(pct / 100)
+                if book.empty:
+                    raise ValueError("That book has no pages to show.")
+                section, page = book.position
+                self.state.set_position(str(path), section, page, book.progress, book.chapter_title, book.chunk)
+                return {"progress": round(book.progress * 100), "chapter": book.chapter_title}
+            finally:
+                book.close()
