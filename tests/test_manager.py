@@ -123,3 +123,8 @@ def test_page_never_puts_book_text_into_html():
     from ereader.upload import PAGE
     assert "innerHTML = ''" in PAGE and PAGE.count("innerHTML") == PAGE.count("innerHTML = ''")   # only ever cleared
     assert "textContent: b.title" in PAGE
+
+
+def test_add_books_comes_before_the_book_list_on_the_page():
+    from ereader.upload import PAGE
+    assert PAGE.index("Add books</summary>") < PAGE.index('id="chips"') < PAGE.index('id="books"')
