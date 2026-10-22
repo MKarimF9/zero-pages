@@ -16,7 +16,7 @@ Copy-paste cheat sheet. **Mac** means a Terminal on your Mac. **Pi** means an SS
 | SSH into the Pi | `ssh pi@192.168.1.50` (or `ssh pi@books.local`) | Pi on Wi-Fi |
 | Preview of the screen (Pi) | http://192.168.1.50:8000 | the reader **and** the preview server running on the Pi |
 | Preview of the screen (Mac) | http://localhost:8000 | the same two things, running on the Mac |
-| Add books over Wi-Fi | the address and PIN shown on the reader's *Add books* screen, e.g. http://192.168.1.50:8080 | the reader on that screen, or `python3 -m ereader.upload` |
+| Manage books over Wi-Fi (add, categories, Up next, pin, delete) | the address and PIN shown on the reader's *Manage books* screen, e.g. http://192.168.1.50:8080 | the reader on that screen, or `python3 -m ereader.upload` |
 | The code on GitHub (private) | https://github.com/MKarimF9/zero-pages | your GitHub login |
 | PDFLoom backend (PDF to EPUB) | http://localhost:3000 | PDFLoom backend running on the Mac |
 
@@ -87,7 +87,7 @@ python3 main.py --display png --controls gpio --books ~/books --width 400 --heig
 | Bookmarks | move (first row is *Back*) | go to the bookmark | **remove** the bookmark |
 | Delete this book? | choose *Keep the book* (default) or *Delete it* | confirm the choice | same as select |
 | Contents | move 1 row (or 5, 10, 25: see hold) | jump to the chapter (first row is *Back*) | change the jump size: 1, 5, 10, 25 |
-| Library options | move | change the value (*Sort by*, *Show*, *Sleep screen*), or open *Add books over Wi-Fi*, or go back | same as select |
+| Library options | move | change the value (*Sort by*, *Show*, *Sleep screen*), or open *Manage books over Wi-Fi*, or go back | same as select |
 | Add books over Wi-Fi | refresh | stop and go back | same as select |
 
 Your place, font and settings are saved. Reset everything on the Pi:
@@ -100,7 +100,7 @@ rm -r ~/.pi-ereader       # forget places, settings and cached covers and pictur
 
 ## 4. Adding books
 
-**Easiest: over Wi-Fi.** On the reader: library, hold select (`m`), *Add books over Wi-Fi*. It shows an address and a PIN. Open the address on any device on the same Wi-Fi, type the PIN, pick or drag `.epub` files. Press select on the reader when done (the server stops).
+**Easiest: over Wi-Fi.** On the reader: library, hold select (`m`), *Manage books over Wi-Fi*. It shows an address and a PIN. Open the address on any device on the same Wi-Fi, type the PIN. You can organise your books (category, Up next, pin, delete) and add `.epub` files under *Add books*. Press select on the reader when done (the server stops).
 
 **Without the reader (Pi):**
 ```bash
@@ -299,7 +299,7 @@ Both scripts say in their docstrings where to download the inputs.
 | Arabic letters not joined | `python3 -c "from PIL import features; print(features.check('raqm'))"` must be `True`. |
 | App won't start with `TypeError: unsupported operand type(s) for \|` | Python is older than 3.10. Use a newer Raspberry Pi OS. |
 | Arrow keys do nothing | `git pull` (arrow keys were added after the first version); letters `w`/`s` always work. |
-| Upload page says wrong PIN / locked | The PIN is new each time the *Add books* screen opens. Five wrong tries lock it for a minute. |
+| Upload page says wrong PIN / locked | The PIN is new each time the *Manage books* screen opens. Five wrong tries lock it for a minute. |
 | A book shows as `(unreadable)` | The file didn't copy fully or isn't a valid EPUB; copy it again. |
 | Port 8000 or 8080 already in use | Stop the other program, or pass another port (`python3 -m http.server 8001`, `--port 8081`). |
 | Reader feels slow | Paste the `[reader] section ... pages in ...s` lines and say whether it's startup, opening a book, or each key press. |

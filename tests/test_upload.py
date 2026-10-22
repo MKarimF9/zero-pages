@@ -54,7 +54,7 @@ def epub_bytes(tmp_path, cover=None):
 def test_page_and_info_need_no_pin(tmp_path):
     with Running(tmp_path) as s:
         with urllib.request.urlopen(s.base + "/") as r:
-            assert b"Add books" in r.read()
+            assert b"Your books" in r.read()
         status, info = s.call("GET", "/api/info", pin=None)
         assert status == 200 and info["pin_required"] is True and info["free_mb"] > 0
 
