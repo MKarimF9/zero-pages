@@ -110,6 +110,8 @@ The panel goes to sleep by itself after 60 seconds with no page turn (the image 
 
 ## Long contents lists
 
+A chapter title that is too long for one line wraps onto up to three lines (`MAX_TOC_LINES` in `ereader/screens.py`); only a title longer than that is cut with `...`. Pages of the contents list therefore hold as many rows as fit.
+
 On the contents screen, **hold select** to change how far up/down move: 1, 5, 10 or 25 rows at a time (the header shows `jump N`). With a big step the cursor stops at the first and last row before wrapping, so you can't skip past them. The Quran EPUB has 147 rows (30 juz and 114 surahs): jump 25 crosses it in about 6 presses, then drop back to 1 to fine-tune. The chapter you are in is marked with an arrow.
 
 ## Bookmarks

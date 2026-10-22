@@ -212,6 +212,7 @@ def _draw_menu_rows(ctx: "AppContext", d: ImageDraw.ImageDraw, top: int,
 
 
 TOC_STEPS = (1, 5, 10, 25)   # how many rows up/down move in a long list; hold select to change
+MAX_TOC_LINES = 3            # a long chapter title wraps onto at most this many lines
 BY_PART = 0                  # extra step for a contents list with parts: up/down move between top-level entries
 
 
@@ -844,11 +845,49 @@ class TocScreen(Screen):
         self.cursor = 1 + reader.book.chapter_index  # start on the current chapter
         self.step = 1
         self.steps = TOC_STEPS + ((BY_PART,) if any(e.level for e in self.entries) else ())
+        self._page_list: list[tuple[int, int]] | None = None   # built when first drawn
+        self._lines: list[list[str]] = []
         self.full_refresh = True
 
     @property
     def _row_h(self) -> int:
+        """Height of a one-line row."""
         return self.ctx.ui_fonts.line_height + 6
+
+    @property
+    def _line_h(self) -> int:
+        """Height of each extra line of a wrapped title (a little tighter than a row)."""
+        return self.ctx.ui_fonts.line_height - 6
+
+    def _wrapped(self, i: int) -> list[str]:
+        """Lines of row i (row 0 is Back). A long title wraps onto up to MAX_TOC_LINES lines;
+        only beyond that is it cut with "..."."""
+        if i == 0:
+            return ["Back"]
+        entry = self.entries[i - 1]
+        room = self.ctx.width - PAD - (PAD + 8 + entry.level * 14)
+        return wrap_text(self.ctx.ui_fonts, entry.title, room, MAX_TOC_LINES) or [entry.title]
+
+    def _height(self, i: int) -> int:
+        return self._row_h + (len(self._lines[i]) - 1) * self._line_h
+
+    def _pages(self) -> list[tuple[int, int]]:
+        """(first row, one past the last row) of each page. Rows are different heights now,
+        so a page is as many rows as fit."""
+        if self._page_list is None:
+            ctx = self.ctx
+            self._lines = [self._wrapped(i) for i in range(len(self.entries) + 1)]
+            body = ctx.height - 2 * (ctx.ui_fonts.line_height + 8) - 4
+            pages, start, used = [], 0, 0
+            for i in range(len(self._lines)):
+                h = self._height(i)
+                if i > start and used + h > body:
+                    pages.append((start, i))
+                    start, used = i, 0
+                used += h
+            pages.append((start, len(self._lines)))
+            self._page_list = pages
+        return self._page_list
 
     def _move_by_part(self, button: Button) -> int:
         """Row of the previous/next top-level entry (row 0, Back, counts as one), wrapping."""
@@ -859,36 +898,35 @@ class TocScreen(Screen):
         earlier = [r for r in tops if r < self.cursor]
         return earlier[-1] if earlier else tops[-1]
 
-    @property
-    def _rows_per_page(self) -> int:
-        body = self.ctx.height - 2 * (self.ctx.ui_fonts.line_height + 8) - 4
-        return max(1, body // self._row_h)
-
     def render(self) -> Image.Image:
         ctx = self.ctx
-        per, count = self._rows_per_page, len(self.entries) + 1
-        start = (self.cursor // per) * per
+        pages = self._pages()
+        number = next(n for n, (a, b) in enumerate(pages) if a <= self.cursor < b)
+        start, end = pages[number]
         img = blank(ctx)
         tag = "jump: parts   " if self.step == BY_PART else f"jump {self.step}   " if self.step > 1 else ""
-        d, top, _ = list_frame(img, ctx.ui_fonts, "Contents", f"{tag}{start // per + 1}/{(count - 1) // per + 1}",
+        d, top, _ = list_frame(img, ctx.ui_fonts, "Contents", f"{tag}{number + 1}/{len(pages)}",
                               icon="toc", labels=("Up", "Open · hold: jump size", "Down"), hint_fonts=ctx.small)
-        ui, w, row_h = ctx.ui_fonts, ctx.width, self._row_h
+        ui, w = ctx.ui_fonts, ctx.width
         current = 1 + self.reader.book.chapter_index
-        for row, i in enumerate(range(start, min(start + per, count))):
-            y0 = top + row * row_h
+        y0 = top
+        for i in range(start, end):
+            row_h = self._height(i)
             selected = i == self.cursor
             fg = WHITE if selected else BLACK
             if selected:
                 d.rectangle((0, y0, w, y0 + row_h - 1), fill=BLACK)
-            mid = y0 + row_h / 2
+            first = y0 + self._row_h / 2   # the middle of the first line
             if i == 0:
-                draw_icon(d, "arrow_back", PAD, mid, 20, fill=fg)
-                draw_text(d, ui, "Back", PAD + 26, w - PAD, mid, fill=fg)
+                draw_icon(d, "arrow_back", PAD, first, 20, fill=fg)
+                draw_text(d, ui, "Back", PAD + 26, w - PAD, first, fill=fg)
             else:
                 if i == current:  # an arrow marks the chapter you're reading (a bookmark means a bookmark)
-                    draw_icon(d, "play_arrow", 0, mid, 16, fill=fg)
-                entry = self.entries[i - 1]
-                draw_text(d, ui, entry.title, PAD + 8 + entry.level * 14, w - PAD, mid, fill=fg)  # chapters sit under their part
+                    draw_icon(d, "play_arrow", 0, first, 16, fill=fg)
+                x = PAD + 8 + self.entries[i - 1].level * 14   # chapters sit under their part
+                for k, line in enumerate(self._lines[i]):
+                    draw_text(d, ui, line, x, w - PAD, first + k * self._line_h, fill=fg)
+            y0 += row_h
         return img
 
     def handle(self, button: Button) -> Screen | None:
