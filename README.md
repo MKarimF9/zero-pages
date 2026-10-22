@@ -157,6 +157,7 @@ Hold select on the library (keyboard: `m`), choose **Manage books over Wi-Fi**. 
 
 - put a book in a **category** (pick one you have or make a new one) and see only that category on the reader (library options, **Show**),
 - add it to **Up next** (books you want to read) and reorder that list with the arrows (library options, **Show: Up next**, shows it in your order),
+- **move your place** with *Go to…*: pick a chapter from its contents list or type a percent. The book then opens there, and counts as the book you last read (the Continue reading card),
 - **pin** it to the top of the library, or **delete** it (the file, its place, its category and its cached covers),
 - add books: open *Add books* and pick or drag in `.epub` files.
 

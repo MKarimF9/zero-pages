@@ -174,6 +174,16 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/books":
             if self._authorized():
                 self._json(200, self.app.books())
+        elif path == "/api/chapters":
+            if self.app.manager is None:
+                self._error(404, "Not found.")
+            elif self._authorized():
+                name = self._name()
+                if name is not None:
+                    try:
+                        self._json(200, self.app.manager.chapters(name))
+                    except KeyError:
+                        self._error(404, "No such book.")
         elif path == "/api/library":
             if self.app.manager is None:
                 self._error(404, "Not found.")
@@ -184,9 +194,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path not in ("/api/upload", "/api/delete", "/api/update"):
+        if path not in ("/api/upload", "/api/delete", "/api/update", "/api/position"):
             return self._error(404, "Not found.")
-        if path == "/api/update" and self.app.manager is None:
+        if path in ("/api/update", "/api/position") and self.app.manager is None:
             return self._error(404, "Not found.")
         if not self._authorized():
             return
@@ -205,11 +215,11 @@ class _Handler(BaseHTTPRequestHandler):
             except KeyError:
                 return self._error(404, "No such book.")
             return self._json(200, {"ok": True})
-        if path == "/api/update":
-            return self._update(name)
+        if path in ("/api/update", "/api/position"):
+            return self._change(path, name)
         self._upload(name)
 
-    def _update(self, name: str) -> None:
+    def _change(self, path: str, name: str) -> None:
         try:
             length = int(self.headers.get("Content-Length", ""))
             if not 0 < length <= MAX_JSON_BYTES:
@@ -218,6 +228,8 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self._error(400, "Send a small JSON body.")
         try:
+            if path == "/api/position":
+                return self._json(200, self.app.manager.set_position(name, changes))
             self.app.manager.update(name, changes)
         except KeyError:
             return self._error(404, "No such book.")
@@ -340,6 +352,7 @@ PAGE = """<!doctype html>
 <script>
 const $ = s => document.querySelector(s);
 let pin = sessionStorage.getItem('pin') || '', lib = {books: [], categories: []}, filter = sessionStorage.getItem('filter') || 'all';
+const msg = (text, ok = false) => { const m = $('#msg'); m.className = ok ? 'good' : 'err'; m.textContent = text; };
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 
 async function api(path, opts = {}) {
@@ -349,8 +362,8 @@ async function api(path, opts = {}) {
   return j;
 }
 const change = async (name, body) => {
-  try { await api('/api/update?name=' + encodeURIComponent(name), {method: 'POST', body: JSON.stringify(body)}); $('#msg').textContent = ''; }
-  catch (e) { $('#msg').textContent = e.message; }
+  try { await api('/api/update?name=' + encodeURIComponent(name), {method: 'POST', body: JSON.stringify(body)}); msg(''); }
+  catch (e) { msg(e.message); }
   refresh();
 };
 function show(unlocked) { $('#pinbox').hidden = unlocked; $('#app').hidden = !unlocked; }
@@ -372,6 +385,25 @@ function drawChips() {
       onclick: () => { filter = key; sessionStorage.setItem('filter', key); drawBooks(); drawChips(); }}));
   }
 }
+async function openGoto(b, host) {
+  if (host.firstChild) { host.innerHTML = ''; return; }
+  host.append(el('div', {className: 'mut', textContent: 'Loading chapters…'}));
+  let chapters = [];
+  try { chapters = await api('/api/chapters?name=' + encodeURIComponent(b.name)); } catch (e) { host.innerHTML = ''; msg(e.message); return; }
+  const go = async body => {
+    try {
+      const r = await api('/api/position?name=' + encodeURIComponent(b.name), {method: 'POST', body: JSON.stringify(body)});
+      msg(b.title + ': now at ' + r.progress + '%' + (r.chapter ? ' · ' + r.chapter : ''), true);
+    } catch (e) { msg(e.message); }
+    refresh();
+  };
+  const sel = el('select', {});
+  for (const c of chapters) sel.append(el('option', {value: c.i, textContent: '\u2003'.repeat(c.level) + c.title}));
+  const pct = el('input', {type: 'number', min: 0, max: 100, step: 1, placeholder: '%', style: 'width:5.5em'});
+  host.innerHTML = '';
+  if (chapters.length) host.append(el('div', {className: 'row'}, sel, el('button', {textContent: 'Go to chapter', onclick: () => go({chapter: +sel.value})})));
+  host.append(el('div', {className: 'row'}, pct, el('button', {textContent: 'Go to %', onclick: () => pct.value !== '' ? go({percent: +pct.value}) : null})));
+}
 function card(b) {
   const status = b.status === 'new' ? 'New' : b.status === 'finished' ? 'Finished' : 'Reading · ' + b.progress + '%';
   const where = b.status === 'reading' && b.chapter ? ' · ' + b.chapter : '';
@@ -384,22 +416,23 @@ function card(b) {
   for (const c of lib.categories) sel.append(el('option', {value: c, textContent: c, selected: c === b.category}));
   sel.append(el('option', {value: '__new', textContent: 'New category…'}));
   if (!b.category) sel.value = '__none';
+  const host = el('div', {});
   const row = el('div', {className: 'row'},
     el('button', {className: b.queued ? 'on' : '', textContent: b.queued ? 'Up next #' + b.queue_position : 'Up next', onclick: () => change(b.name, {queued: !b.queued})}),
     el('button', {className: b.pinned ? 'on' : '', textContent: b.pinned ? 'Pinned' : 'Pin', onclick: () => change(b.name, {pinned: !b.pinned})}),
-    sel);
+    sel, el('button', {textContent: 'Go to…', onclick: () => openGoto(b, host)}));
   if (b.queued && filter === 'want') row.append(
     el('button', {textContent: '▲', title: 'Move up', onclick: () => change(b.name, {move: 'up'})}),
     el('button', {textContent: '▼', title: 'Move down', onclick: () => change(b.name, {move: 'down'})}));
   row.append(el('button', {className: 'del', textContent: 'Delete', onclick: async () => {
     if (!confirm('Delete ' + b.title + '? This removes the file from the e-reader.')) return;
-    try { await api('/api/delete?name=' + encodeURIComponent(b.name), {method: 'POST'}); } catch (e) { $('#msg').textContent = e.message; }
+    try { await api('/api/delete?name=' + encodeURIComponent(b.name), {method: 'POST'}); } catch (e) { msg(e.message); }
     refresh();
   }}));
   return el('div', {className: 'card book'},
     el('h3', {dir: 'auto', textContent: b.title}), el('div', {className: 'au', dir: 'auto', textContent: b.author}),
     el('div', {className: 'st', dir: 'auto', textContent: status + where}),
-    el('div', {className: 'bar'}, el('i', {style: 'width:' + b.progress + '%'})), row);
+    el('div', {className: 'bar'}, el('i', {style: 'width:' + b.progress + '%'})), row, host);
 }
 function drawBooks() {
   const box = $('#books'); box.innerHTML = '';
@@ -412,8 +445,8 @@ function drawBooks() {
 async function refresh() {
   try { lib = await api('/api/library'); show(true); drawChips(); drawBooks(); }
   catch (e) {
-    if (e.status === 403 || e.status === 429) { show(false); $('#msg').textContent = pin ? e.message : ''; if (pin) { pin = ''; sessionStorage.removeItem('pin'); } }
-    else $('#msg').textContent = e.message;
+    if (e.status === 403 || e.status === 429) { show(false); msg(pin ? e.message : ''); if (pin) { pin = ''; sessionStorage.removeItem('pin'); } }
+    else msg(e.message);
   }
 }
 function send(file) {
@@ -436,8 +469,8 @@ function send(file) {
   });
 }
 async function sendAll(files) {
-  $('#msg').textContent = '';
-  for (const f of files) { if (!/\\.epub$/i.test(f.name)) { $('#msg').textContent = f.name + ' is not an .epub file.'; continue; } await send(f); }
+  msg('');
+  for (const f of files) { if (!/\\.epub$/i.test(f.name)) { msg(f.name + ' is not an .epub file.'); continue; } await send(f); }
   refresh();
 }
 $('#file').onchange = e => { sendAll([...e.target.files]); e.target.value = ''; };
@@ -445,7 +478,7 @@ const drop = $('#drop');
 ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => sendAll([...e.dataTransfer.files]));
-$('#go').onclick = () => { pin = $('#pin').value.trim(); sessionStorage.setItem('pin', pin); $('#msg').textContent = ''; refresh(); };
+$('#go').onclick = () => { pin = $('#pin').value.trim(); sessionStorage.setItem('pin', pin); msg(''); refresh(); };
 $('#pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').click(); });
 fetch('/api/info').then(r => r.json()).then(i => { if (!i.pin_required) pin = ''; refresh(); });
 </script></main></body></html>
@@ -458,9 +491,13 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--pin", default=None, help="PIN to require (default: a random one; '' for none)")
     args = ap.parse_args()
+    from .fonts import DEFAULT_FAMILY, Fonts
     from .state import ReadingState
+    state = ReadingState()
     server = UploadServer(args.books, pin=args.pin, port=args.port,
-                          manager=BookManager(args.books, ReadingState()))
+                          manager=BookManager(args.books, state, layout=(
+                              Fonts(state.get_setting("font_size", 22), state.get_setting("font_family", DEFAULT_FAMILY)),
+                              400, 276, 6)))
     server.start()
     ip = local_ip() or "<this device's address>"
     print(f"Open http://{ip}:{server.port} in a browser" + (f"  (PIN: {server.pin})" if server.pin else "  (no PIN!)"), flush=True)

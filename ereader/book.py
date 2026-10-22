@@ -276,6 +276,27 @@ class LazyBook:
         self._seek(entry.section, 0, self._entry_chunk.get(index, 0))
         self._trim()
 
+    def goto_fraction(self, fraction: float) -> None:
+        """Jump to about `fraction` (0..1) of the book, by the same byte offsets that
+        `progress` is estimated from, so reading `progress` afterwards gives about the
+        same number back."""
+        fraction = max(0.0, min(1.0, fraction))
+        if not self._total:
+            return self.goto(int(fraction * (self.section_count - 1)))
+        target = fraction * self._total
+        section = max(0, bisect_right(self._section_start, target) - 1)
+        while section < self.section_count - 1 and not self._sizes[section]:
+            section += 1   # an empty file holds nothing to land on
+        plan = self._plan(section)
+        offset = (target - self._section_start[section]) / max(1, self._sizes[section]) * plan[-1][1]
+        chunk = max((c for c, (start, _) in enumerate(plan) if start <= offset), default=0)
+        start, end = plan[chunk]
+        within = (offset - start) / max(1, end - start)
+        pages = self._unit(section, chunk)
+        page = int(within * len(pages)) if pages else 0
+        self._seek(section, page, chunk)
+        self._trim()
+
     def goto(self, section: int) -> None:
         """Jump to the first page of a section."""
         self._seek(section, 0, 0)
