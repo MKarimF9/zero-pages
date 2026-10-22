@@ -110,6 +110,19 @@ class ReadingState:
             table.pop(book, None)
         self.save()
 
+    def get_title(self, book: str) -> str:
+        """The name you gave a book from your phone, or "" to use the one inside the EPUB."""
+        return self._data.get("titles", {}).get(book, "")
+
+    def set_title(self, book: str, title: str) -> None:
+        title = " ".join(title.split())[:200]
+        table = self._data.setdefault("titles", {})
+        if title:
+            table[book] = title
+        else:
+            table.pop(book, None)
+        self.save()
+
     def categories(self) -> list[str]:
         """Every category in use, alphabetically."""
         return sorted({c for c in self._data.get("categories", {}).values() if c}, key=str.casefold)
@@ -150,6 +163,7 @@ class ReadingState:
         if book in self._data.get("queue", []):
             self._data["queue"].remove(book)
         self._data.get("categories", {}).pop(book, None)
+        self._data.get("titles", {}).pop(book, None)
         self.save()
 
     def get_opened(self, book: str) -> float:

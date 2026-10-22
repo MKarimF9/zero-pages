@@ -355,6 +355,7 @@ Both scripts say in their docstrings where to download the inputs.
 | **Up next** | add or remove the book from your reading list; in the *Up next* view, **▲ ▼** change the order |
 | **Pin** | keep the book at the top of the library on the reader |
 | Category dropdown | put the book on a shelf (pick one, *No category*, or *New category…*); the reader's *Show* option can then show just that shelf |
+| **Rename** | give the book a name of your own (shown in the library, on the sleep cover and in the delete question); leave it empty to go back to the name inside the book. The file itself is not changed |
 | **Go to…** | move your place: pick a chapter, or type a percent; the book then opens there |
 | **Delete** | remove the file and everything remembered about it (asks first) |
 | **Add books** (top of the page) | pick or drop `.epub` files to send them to the reader |

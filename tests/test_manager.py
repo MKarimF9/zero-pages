@@ -45,7 +45,7 @@ def test_update_applies_changes(tmp_path):
 def test_bad_updates_change_nothing(tmp_path):
     mgr, state, books = setup(tmp_path)
     for bad in ({}, {"category": 5}, {"queued": "yes"}, {"pinned": 1}, {"move": "sideways"},
-                {"title": "x"}, {"category": "ok", "queued": "yes"}, ["category"], None):
+                {"author": "x"}, {"category": "ok", "queued": "yes"}, ["category"], None):
         try:
             mgr.update("a.epub", bad)
         except ValueError:

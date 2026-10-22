@@ -421,10 +421,16 @@ function card(b) {
   sel.append(el('option', {value: '__new', textContent: 'New category…'}));
   if (!b.category) sel.value = '__none';
   const host = el('div', {});
+  const rename = async () => {
+    const v = prompt('Book name (leave empty to use the original)', b.title);
+    if (v === null) return;
+    await change(b.name, {title: v.trim()});
+  };
   const row = el('div', {className: 'row'},
     el('button', {className: b.queued ? 'on' : '', textContent: b.queued ? 'Up next #' + b.queue_position : 'Up next', onclick: () => change(b.name, {queued: !b.queued})}),
     el('button', {className: b.pinned ? 'on' : '', textContent: b.pinned ? 'Pinned' : 'Pin', onclick: () => change(b.name, {pinned: !b.pinned})}),
-    sel, el('button', {textContent: 'Go to…', onclick: () => openGoto(b, host)}));
+    sel, el('button', {textContent: 'Go to…', onclick: () => openGoto(b, host)}),
+    el('button', {textContent: 'Rename', onclick: rename}));
   if (b.queued && filter === 'want') row.append(
     el('button', {textContent: '▲', title: 'Move up', onclick: () => change(b.name, {move: 'up'})}),
     el('button', {textContent: '▼', title: 'Move down', onclick: () => change(b.name, {move: 'down'})}));

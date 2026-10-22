@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -252,7 +252,8 @@ class LibraryScreen(Screen):
         self.filter = ctx.state.get_setting("library_filter", "all")
         if self.filter not in self.filters:   # a category that no longer exists
             self.filter = "all"
-        infos = index.scan(ctx.books_dir)
+        infos = [replace(b, title=ctx.state.get_title(str(b.path)) or b.title)   # names you gave from your phone
+                 for b in index.scan(ctx.books_dir)]
         if self.filter != "all":
             infos = [b for b in infos if matches_filter(self.filter, str(b.path), ctx.state)]
         infos = sort_books(infos, self.sort, ctx.state)
@@ -678,7 +679,7 @@ class ReaderScreen(Screen):
         """The cover of this book, unless the sleep screen is set to keep the page."""
         if self.ctx.state.get_setting("sleep_screen", "cover") != "cover" or not self.book:
             return None
-        return cover_frame(self.ctx, self.path, self.book.epub.title)
+        return cover_frame(self.ctx, self.path, self.ctx.state.get_title(str(self.path)) or self.book.epub.title)
 
     def resume(self) -> "ReaderScreen":
         """Come back from a menu: the whole screen changed, so clear ghosting."""
@@ -1041,7 +1042,8 @@ class DeleteBookScreen(Screen):
 
     @property
     def title(self) -> str:
-        return (self.reader.book.epub.title if self.reader.book else "") or self.reader.path.stem
+        state, path = self.reader.ctx.state, self.reader.path
+        return state.get_title(str(path)) or (self.reader.book.epub.title if self.reader.book else "") or path.stem
 
     def _deletable(self) -> bool:
         """Only a plain .epub that sits directly in the books folder."""
