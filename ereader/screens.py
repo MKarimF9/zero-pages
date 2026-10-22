@@ -32,7 +32,7 @@ from .page import Page, PlacedImage, PlacedWord
 from .state import ReadingState
 from .upload import PORT, UploadServer, local_ip
 from .ui import (BLACK, PAD, STATUS_BAR_HEIGHT, WHITE, draw_icon, draw_progress,
-                 draw_text, list_frame, wrap_text)
+                 draw_text, fit_text, list_frame, wrap_text)
 
 FULL_REFRESH_EVERY = 8  # partial refreshes allowed before a full one
 SAVE_EVERY = 5          # page turns between progress saves (each save writes the SD card)
@@ -539,6 +539,23 @@ class Status:
     bookmarked: bool = False
 
 
+MIN_PART_WIDTH = 100  # px kept for the collection name in "Collection › Chapter" when the chapter is long
+
+
+def fit_chapter(fonts: Fonts, text: str, max_width: float) -> str:
+    """Fit "Collection › Chapter" into max_width by shortening the collection first, so the
+    chapter stays readable. Anything else is cut at the end as usual."""
+    if fonts.width(text) <= max_width or " › " not in text:
+        return text
+    parent, child = text.split(" › ", 1)
+    sep = " › "
+    room = max_width - fonts.width(sep + child)
+    if room < MIN_PART_WIDTH:   # a very long chapter: keep a stub of the collection, cut the chapter
+        room = MIN_PART_WIDTH
+        child = fit_text(fonts, child, Style.NORMAL, max_width - MIN_PART_WIDTH - fonts.width(sep))
+    return fit_text(fonts, parent, Style.NORMAL, room) + sep + child
+
+
 def draw_status_bar(ctx: AppContext, d: ImageDraw.ImageDraw, st: Status) -> None:
     """Progress bar with the chapter title on one side and page/percent on the
     other. For right-to-left books everything is mirrored, including the
@@ -553,10 +570,12 @@ def draw_status_bar(ctx: AppContext, d: ImageDraw.ImageDraw, st: Status) -> None
     left, right = MARGIN, ctx.width - MARGIN
     if st.rtl:
         draw_text(d, small, info, left, left + info_w + 1, base_y, align="left", baseline=True)
-        draw_text(d, small, st.chapter, left + info_w + 12, right, base_y, align="right", baseline=True)
+        chapter = fit_chapter(small, st.chapter, right - left - info_w - 12)
+        draw_text(d, small, chapter, left + info_w + 12, right, base_y, align="right", baseline=True)
     else:
         draw_text(d, small, info, right - info_w - 1, right, base_y, align="right", baseline=True)
-        draw_text(d, small, st.chapter, left, right - info_w - 12, base_y, align="left", baseline=True)
+        chapter = fit_chapter(small, st.chapter, right - left - info_w - 12)
+        draw_text(d, small, chapter, left, right - info_w - 12, base_y, align="left", baseline=True)
 
 
 def draw_page(ctx: AppContext, page: Page, status: Status, load_image=None) -> Image.Image:

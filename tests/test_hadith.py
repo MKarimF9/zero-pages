@@ -142,3 +142,40 @@ def test_part_jump_moves_between_top_level_entries_and_wraps():
 def test_no_part_jump_for_a_flat_contents_list():
     screen = toc_screen([entry("A", 0), entry("B", 0)])
     assert BY_PART not in screen.steps
+
+
+def test_status_title_names_the_collection(tmp_path):
+    from ereader.book import LazyBook
+    from ereader.fonts import Fonts
+    out = tmp_path / "out"
+    gen.build_all(write_data(tmp_path / "data"), out)
+    book = LazyBook(out / "Hadith.epub", Fonts(22), 400, 276)
+    book.goto_entry(3)    # "1. Manners", under Riyad as-Salihin
+    assert book.chapter_title == "Riyad as-Salihin › 1. Manners"
+    book.goto_entry(0)    # a collection itself has no parent
+    assert book.chapter_title == "Forty Hadith of an-Nawawi"
+
+
+def test_flat_contents_titles_are_unchanged(tmp_path):
+    from ereader.book import LazyBook
+    from ereader.fonts import Fonts
+    out = tmp_path / "out"
+    gen.build_all(write_data(tmp_path / "data"), out, only="riyad_assalihin")
+    book = LazyBook(out / "individual" / "riyad_assalihin.epub", Fonts(22), 400, 276)
+    book.goto_entry(1)
+    assert book.chapter_title == "2. Dress"
+
+
+def test_status_bar_shortens_the_collection_before_the_chapter():
+    from ereader.fonts import Fonts
+    from ereader.screens import fit_chapter
+    f = Fonts(15)
+    title = "Mishkat al-Masabih › 5. The Chapters on Marriage"
+    wide = f.width(title) + 5
+    assert fit_chapter(f, title, wide) == title                    # fits: untouched
+    narrow = fit_chapter(f, title, wide - 40)
+    assert narrow.endswith("› 5. The Chapters on Marriage")        # the chapter survives whole
+    assert "..." in narrow and f.width(narrow) <= wide - 40
+    assert fit_chapter(f, "Just a chapter title that is long", 60) == "Just a chapter title that is long"  # no collection: draw_text cuts it
+    tiny = fit_chapter(f, "Sahih Muslim › " + "a very long chapter name " * 3, 200)
+    assert tiny.startswith("Sahih") and f.width(tiny) <= 200

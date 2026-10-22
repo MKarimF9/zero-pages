@@ -126,7 +126,7 @@ An Arabic paragraph followed by an English one (a verse and its translation, as 
 
 ## Hadith books
 
-`tools/make_hadith_epub.py` turns the JSON files of [AhmedBaset/hadith-json](https://github.com/AhmedBaset/hadith-json) (the `db/by_book/` folder, copied flat into one folder) into EPUBs: one book called **Hadith** with every collection, and one book per collection. The contents list is nested (Hadith > collection > chapter): chapters are indented under their collection, and on the contents screen **hold select until the header says `jump: parts`** to move up/down between collections instead of chapters. Each hadith is an Arabic paragraph then its English one, so the reader keeps them on one page (shrinking a long pair to fit).
+`tools/make_hadith_epub.py` turns the JSON files of [AhmedBaset/hadith-json](https://github.com/AhmedBaset/hadith-json) (the `db/by_book/` folder, copied flat into one folder) into EPUBs: one book called **Hadith** with every collection, and one book per collection. The contents list is nested (Hadith > collection > chapter): chapters are indented under their collection, and on the contents screen **hold select until the header says `jump: parts`** to move up/down between collections instead of chapters. The status bar shows `Collection › Chapter` (the collection is shortened first if the line is too long). Each hadith is an Arabic paragraph then its English one, so the reader keeps them on one page (shrinking a long pair to fit).
 
 ```bash
 python3 tools/make_hadith_epub.py ~/hadith-json ~/books-out                      # Hadith.epub + individual/*.epub
