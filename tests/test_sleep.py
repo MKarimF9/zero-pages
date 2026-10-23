@@ -81,8 +81,8 @@ def test_panel_shows_the_sleep_screen_then_sleeps():
     time.sleep(0.3)
     epd = driver.epd
     assert epd.calls == ["init", ("display", 15000), "init", ("display", 15000), "sleep"]
-    d.show(image(), False)                      # woke up: the next page is a full refresh
-    assert epd.calls[-2:] == ["init", ("display", 15000)]
+    d.show(image(), False)                      # woke up: the next page is a fast refresh, not a partial one
+    assert epd.calls[-2:] == [("init_fast", 0), ("fast", 15000)]
 
 
 def test_failing_or_missing_sleep_image_still_sleeps():

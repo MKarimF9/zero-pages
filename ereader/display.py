@@ -98,9 +98,13 @@ def _load_waveshare_driver():
 class EPaperDisplay(Display):
     """Waveshare 4.2" V2 e-paper (400x300, black and white).
 
-    Full refresh (slow, flashes) clears ghosting; partial refresh is fast.
-    The panel's image RAM is lost when it is powered off, so after sleeping
-    the next frame is always a full refresh, whatever the caller asked for.
+    Three kinds of refresh. A partial one is fast (no flash) but leaves a little
+    ghosting. When the caller asks for a full refresh (a new screen, or every few
+    page turns) we do a *fast* one instead: about 1.5 s with a single flash. Only
+    every FAST_BEFORE_FULL-th such request is a true full refresh (several flashes,
+    about 3 s) that wipes the ghosting away.
+    The panel's image RAM is lost when it is powered off, so the first frame after
+    sleeping is never a partial one, whatever the caller asked for.
 
     To avoid leaving the panel powered for hours (bad for e-paper), it goes
     to sleep by itself after `idle_sleep` seconds without a new frame. The
@@ -108,6 +112,7 @@ class EPaperDisplay(Display):
     """
 
     IDLE_SLEEP_SECONDS = 60
+    FAST_BEFORE_FULL = 6   # fast refreshes in a row before one true full refresh
 
     def __init__(self, driver=None, idle_sleep: float = IDLE_SLEEP_SECONDS):
         self._epd = (driver or _load_waveshare_driver()).EPD()
@@ -117,6 +122,9 @@ class EPaperDisplay(Display):
         self._awake = False
         self._idle_token: object | None = None
         self._idle_provider = None
+        self._fast_runs = self.FAST_BEFORE_FULL   # the first frame is a true full refresh
+        self._fast_mode = False                   # is the controller set up for fast refresh?
+        self._last: list[int] | None = None       # the frame on the panel, for the next partial
 
     def show(self, image: Image.Image, full_refresh: bool) -> None:
         if image.size != (self.width, self.height):
@@ -126,17 +134,35 @@ class EPaperDisplay(Display):
         buf = list(image.convert("1").tobytes())
         with self._lock:
             self._idle_token = None  # cancel a pending idle sleep
-            if full_refresh or not self._awake:
+            if self._awake and not full_refresh:
+                self._partial(buf)
+            elif self._fast_runs >= self.FAST_BEFORE_FULL:
                 self._epd.init()
                 self._epd.display(buf)
-                self._awake = True
+                self._fast_runs, self._fast_mode = 0, False
             else:
-                self._epd.display_Partial(buf)
+                self._epd.init_fast(self._epd.Seconds_1_5S)
+                self._epd.display_Fast(buf)
+                self._fast_runs += 1
+                self._fast_mode = True
+            self._awake = True
+            self._last = buf
             if self._idle_sleep:
                 token = self._idle_token = object()
                 timer = threading.Timer(self._idle_sleep, self._sleep_if_idle, args=(token,))
                 timer.daemon = True
                 timer.start()
+
+    def _partial(self, buf: list[int]) -> None:
+        if self._fast_mode:
+            # The controller is set up for fast refresh: set it up for partial ones again
+            # and give it the old frame to compare against, so nothing depends on whether
+            # the reset kept the image RAM.
+            self._epd.init()
+            self._epd.send_command(0x26)
+            self._epd.send_data2(self._last)
+            self._fast_mode = False
+        self._epd.display_Partial(buf)
 
     def _sleep_if_idle(self, token: object) -> None:
         # Make the sleep screen first, without the lock: it can take a while on a
@@ -152,7 +178,8 @@ class EPaperDisplay(Display):
                 return
             if image is not None and image.size == (self.width, self.height) and self._awake:
                 self._epd.init()
-                self._epd.display(list(image.convert("1").tobytes()))  # full refresh, then power down
+                self._epd.display(list(image.convert("1").tobytes()))  # true full refresh, then power down
+                self._fast_runs, self._fast_mode = 0, False
             self._sleep_locked()
 
     def _sleep_locked(self) -> None:

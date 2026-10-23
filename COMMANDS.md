@@ -221,7 +221,11 @@ cp -r e-Paper/RaspberryPi_JetsonNano/python/lib/waveshare_epd ~/pi-ereader/lib/
 cd ~/pi-ereader
 python3 main.py --books ~/books --display epaper --controls gpio
 ```
-Wiring: buttons between a GPIO pin and GND: **up = GPIO 5** (header pin 29), **down = GPIO 6** (pin 31), **select = GPIO 13** (pin 33). The e-paper HAT uses GPIO 17, 25, 8, 24, 18 and SPI; keep the buttons off those. The e-paper path has **not been tested on real hardware yet**.
+Wiring: buttons between a GPIO pin and GND: **up = GPIO 5** (header pin 29), **down = GPIO 6** (pin 31), **select = GPIO 13** (pin 33). The e-paper HAT uses GPIO 17, 25, 8, 24, 18 and SPI; keep the buttons off those. The screen has been tested on the real panel; the buttons have not.
+
+Display wiring (Waveshare 4.2" V2 module with a 9-pin connector; BCM numbers, header pins in brackets): VCC = 3.3V (1), GND (6), DIN = GPIO 10 (19), CLK = GPIO 11 (23), CS = GPIO 8 (24), DC = GPIO 25 (22), RST = GPIO 17 (11), BUSY = GPIO 24 (18), **PWR = GPIO 18 (12)**. Without PWR the panel never powers up. Interface Config switch on the module: 0 (4-line SPI).
+
+Refreshing: page turns and menu moves are partial (no flash). A new screen, and every 8th page turn, is a fast refresh (about 1.5 s, one flash). Every 6th fast refresh, and the sleep screen, is a true full refresh (several flashes) that clears ghosting. Tune `FAST_BEFORE_FULL` in `ereader/display.py` and `FULL_REFRESH_EVERY` in `ereader/screens.py`.
 
 **Start on boot (systemd)**: only once the screen and buttons are connected. Without them the service crashes and restarts in a loop (see section 11).
 ```bash

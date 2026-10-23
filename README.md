@@ -106,7 +106,9 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 4. Wire the buttons between a GPIO pin and GND (the Pi's internal pull-ups are used): **up = BCM 5** (header pin 29), **down = BCM 6** (pin 31), **select = BCM 13** (pin 33). The HAT uses BCM 17, 25, 8, 24, 18 and SPI, so avoid those. Change the pins in `main.py` if you like.
 5. Run it: `python3 main.py --books ~/books --display epaper --controls gpio`. The screen size comes from the panel; the keyboard and PNG options still work.
 
-The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a full refresh. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
+The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a fast refresh.
+
+   **Refreshing.** Page turns and moving a highlight are partial refreshes (no flash, a little ghosting). A new screen, and every 8th page turn, is a *fast* refresh: about 1.5 s with one flash. Every 6th of those, and the sleep screen, is a *true full* refresh (several flashes, about 3 s) that wipes the ghosting away. Change `FAST_BEFORE_FULL` in `ereader/display.py` (higher = fewer big flashes, more ghosting) or `FULL_REFRESH_EVERY` in `ereader/screens.py`. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
 
 ## Long contents lists
 
