@@ -8,7 +8,13 @@ class FakeEPD:
     def __init__(self):
         self.calls = []
 
+    Seconds_1_5S = 0
+
     def init(self): self.calls.append("init")
+    def init_fast(self, mode): self.calls.append(("init_fast", mode))
+    def display_Fast(self, buf): self.calls.append(("fast", len(buf)))
+    def send_command(self, cmd): self.calls.append(("command", cmd))
+    def send_data2(self, buf): self.calls.append(("data", len(buf)))
     def display(self, buf): self.calls.append(("display", len(buf)))
     def display_Partial(self, buf): self.calls.append(("partial", len(buf)))
     def sleep(self): self.calls.append("sleep")
