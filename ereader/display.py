@@ -44,8 +44,9 @@ class Display(ABC):
         goes idle (a sleep screen), or None to keep the current page."""
         self._idle_provider = provider
 
-    def sleep(self) -> None:
-        """Power down the display when idle. No-op by default."""
+    def sleep(self, with_image: bool = False) -> None:
+        """Power down the display when idle. No-op by default. `with_image`: leave the
+        sleep screen on it first (when the Pi is about to be switched off)."""
 
 
 class PNGDisplay(Display):
@@ -63,7 +64,7 @@ class PNGDisplay(Display):
         (self.out_dir / "index.html").write_text(PREVIEW_HTML)
         self.frames = 0
 
-    def sleep(self) -> None:
+    def sleep(self, with_image: bool = False) -> None:
         """For development: write what the sleep screen would be to preview/sleep.png."""
         image = getattr(self, "_idle_provider", lambda: None)()
         if image is not None:
@@ -167,27 +168,31 @@ class EPaperDisplay(Display):
     def _sleep_if_idle(self, token: object) -> None:
         # Make the sleep screen first, without the lock: it can take a while on a
         # Pi and a button press in the meantime must not have to wait for it.
-        image = None
-        if self._idle_provider and token is self._idle_token:
-            try:
-                image = self._idle_provider()
-            except Exception:
-                image = None  # no sleep screen is better than no sleep
+        image = self._make_idle_image() if token is self._idle_token else None
         with self._lock:
             if token is not self._idle_token:  # a newer frame arrived: stay awake
                 return
-            if image is not None and image.size == (self.width, self.height) and self._awake:
-                self._epd.init()
-                self._epd.display(list(image.convert("1").tobytes()))  # true full refresh, then power down
-                self._fast_runs, self._fast_mode = 0, False
-            self._sleep_locked()
+            self._sleep_locked(image)
 
-    def _sleep_locked(self) -> None:
+    def _make_idle_image(self):
+        if not self._idle_provider:
+            return None
+        try:
+            return self._idle_provider()
+        except Exception:
+            return None  # no sleep screen is better than no sleep
+
+    def _sleep_locked(self, image: Image.Image | None = None) -> None:
         self._idle_token = None
+        if image is not None and image.size == (self.width, self.height) and self._awake:
+            self._epd.init()
+            self._epd.display(list(image.convert("1").tobytes()))  # true full refresh, then power down
+            self._fast_runs, self._fast_mode = 0, False
         if self._awake:
             self._epd.sleep()
             self._awake = False
 
-    def sleep(self) -> None:
+    def sleep(self, with_image: bool = False) -> None:
+        image = self._make_idle_image() if with_image else None
         with self._lock:
-            self._sleep_locked()
+            self._sleep_locked(image)

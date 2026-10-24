@@ -8,6 +8,7 @@ from __future__ import annotations
 import queue
 import sys
 from abc import ABC, abstractmethod
+import threading
 from enum import Enum, auto
 
 
@@ -16,6 +17,7 @@ class Button(Enum):
     DOWN = auto()
     SELECT = auto()
     SELECT_LONG = auto()  # hold select (keyboard: m): options on screens that have them
+    POWER_OFF = auto()  # hold select a few seconds (GPIO buttons only): save and switch the Pi off
     QUIT = auto()  # dev only; the real device has no quit button
 
 
@@ -98,7 +100,8 @@ class GPIOControls(Controls):
     """
 
     def __init__(self, up_pin: int, down_pin: int, select_pin: int,
-                 bounce_time: float = 0.05, hold_time: float = 0.7, button_factory=None):
+                 bounce_time: float = 0.05, hold_time: float = 0.7, power_hold: float = 3.0,
+                 button_factory=None):
         if button_factory is None:
             from gpiozero import Button as GPIOButton
             button_factory = GPIOButton
@@ -113,15 +116,35 @@ class GPIOControls(Controls):
         # moment; released earlier -> SELECT (so a tap is reported on release).
         select = button_factory(select_pin, bounce_time=bounce_time, hold_time=hold_time)
         self._select_held = False
+        self._power_hold = power_hold   # holding select this long (0 = never) means POWER_OFF
+        self._power_timer: threading.Timer | None = None
+        select.when_pressed = self._on_select_pressed
         select.when_held = self._on_select_held
         select.when_released = self._on_select_released
         self._buttons.append(select)
+
+    def _on_select_pressed(self) -> None:
+        if self._power_hold:
+            self._cancel_power_timer()
+            self._power_timer = threading.Timer(self._power_hold, self._on_power_hold)
+            self._power_timer.daemon = True
+            self._power_timer.start()
+
+    def _cancel_power_timer(self) -> None:
+        if self._power_timer:
+            self._power_timer.cancel()
+            self._power_timer = None
+
+    def _on_power_hold(self) -> None:
+        self._select_held = True   # the release after this is not a tap
+        self._events.put(Button.POWER_OFF)
 
     def _on_select_held(self) -> None:
         self._select_held = True
         self._events.put(Button.SELECT_LONG)
 
     def _on_select_released(self) -> None:
+        self._cancel_power_timer()
         if self._select_held:
             self._select_held = False  # the hold was already reported
         else:

@@ -108,6 +108,8 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 
 The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a fast refresh.
 
+   **Switching off.** Hold select for 3 seconds: the reader saves your page, leaves the sleep screen up and powers the Pi off (it needs passwordless `sudo`, which Raspberry Pi OS has by default). Unplug once the green LED stops blinking.
+
    **Refreshing.** Page turns and moving a highlight are partial refreshes (no flash, a little ghosting). A new screen, and every 8th page turn, is a *fast* refresh: about 1.5 s with one flash. Every 6th of those, and the sleep screen, is a *true full* refresh (several flashes, about 3 s) that wipes the ghosting away. Change `FAST_BEFORE_FULL` in `ereader/display.py` (higher = fewer big flashes, more ghosting) or `FULL_REFRESH_EVERY` in `ereader/screens.py`. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
 
 ## Long contents lists
