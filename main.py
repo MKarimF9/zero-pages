@@ -17,6 +17,7 @@ from pathlib import Path
 from ereader.controls import Button, GPIOControls, KeyboardControls
 from ereader.display import EPaperDisplay, PNGDisplay
 from ereader.fonts import DEFAULT_FAMILY, Fonts
+from ereader.power import can_power_off, power_off
 from ereader.screens import AppContext, effective_button, initial_screen
 from ereader.state import ReadingState
 
@@ -59,6 +60,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
     screen = initial_screen(ctx, args.start)
+    switching_off = False
     try:
         while True:
             display.show(screen.render(), full_refresh=screen.full_refresh)
@@ -66,10 +68,18 @@ def main() -> None:
             button = controls.wait()
             if button is Button.QUIT:
                 break
+            if button is Button.POWER_OFF:
+                if can_power_off():
+                    switching_off = True
+                    break
+                print("[power] holding select can't switch the Pi off: sudo needs a password", flush=True)
+                continue
             screen = screen.handle(effective_button(button, screen)) or screen
     finally:
         screen.close()  # e.g. save reading progress
-        display.sleep()
+        display.sleep(with_image=switching_off)   # the sleep screen stays up while the Pi is off
+    if switching_off and not power_off():
+        print("[power] the poweroff command failed", flush=True)
 
 
 if __name__ == "__main__":

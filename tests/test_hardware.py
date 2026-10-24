@@ -133,12 +133,12 @@ class FakeGPIOButton:
         self.when_pressed = self.when_released = self.when_held = None
 
 
-def make_controls():
+def make_controls(**kwargs):
     made = []
-    def factory(pin, **kwargs):
-        made.append(FakeGPIOButton(pin, **kwargs))
+    def factory(pin, **kw):
+        made.append(FakeGPIOButton(pin, **kw))
         return made[-1]
-    return GPIOControls(5, 6, 13, button_factory=factory), made
+    return GPIOControls(5, 6, 13, button_factory=factory, **kwargs), made
 
 
 def test_gpio_buttons_map_to_events():
@@ -165,3 +165,60 @@ def test_holding_select_is_a_long_press_and_not_also_a_tap():
 def test_keyboard_m_is_hold_select():
     from ereader.controls import KeyboardControls
     assert KeyboardControls.KEYMAP["m"] is Button.SELECT_LONG
+
+
+def test_holding_select_long_enough_is_power_off_and_not_also_a_tap():
+    controls, (up, down, select) = make_controls(power_hold=0.05)
+    select.when_pressed()
+    select.when_held()               # 0.7 s: options, as before
+    time.sleep(0.2)                  # still held: power off
+    select.when_released()
+    assert [controls.wait(), controls.wait()] == [Button.SELECT_LONG, Button.POWER_OFF]
+    assert controls._events.empty()
+
+
+def test_releasing_before_the_power_hold_cancels_it():
+    controls, (up, down, select) = make_controls(power_hold=0.1)
+    select.when_pressed()
+    select.when_released()           # a tap
+    time.sleep(0.25)
+    assert controls.wait() == Button.SELECT and controls._events.empty()
+
+
+def test_power_hold_of_zero_turns_the_power_gesture_off():
+    controls, (up, down, select) = make_controls(power_hold=0)
+    select.when_pressed()
+    time.sleep(0.1)
+    select.when_released()
+    assert controls.wait() == Button.SELECT and controls._events.empty()
+
+
+def test_sleeping_for_power_off_leaves_the_sleep_screen():
+    d, epd = make()
+    d.set_idle_image(lambda: image(black_at=(1, 1)))
+    d.show(image(), True)
+    epd.calls.clear()
+    d.sleep(with_image=True)
+    assert epd.calls == ["init", ("display", 15000), "sleep"]
+
+
+def test_plain_sleep_leaves_the_page():
+    d, epd = make()
+    d.set_idle_image(lambda: image(black_at=(1, 1)))
+    d.show(image(), True)
+    epd.calls.clear()
+    d.sleep()
+    assert epd.calls == ["sleep"]
+
+
+def test_power_off_needs_passwordless_sudo():
+    from types import SimpleNamespace
+    from ereader.power import COMMAND, can_power_off, power_off
+    seen = []
+    def run_ok(cmd, **kw): seen.append(cmd); return SimpleNamespace(returncode=0)
+    def run_no(cmd, **kw): return SimpleNamespace(returncode=1)
+    def run_missing(cmd, **kw): raise FileNotFoundError("sudo")
+    assert can_power_off(run_ok) and power_off(run_ok)
+    assert seen == [["sudo", "-n", "true"], COMMAND]
+    assert not can_power_off(run_no) and not power_off(run_no)
+    assert not can_power_off(run_missing) and not power_off(run_missing)

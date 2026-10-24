@@ -227,6 +227,8 @@ Display wiring (Waveshare 4.2" V2 module with a 9-pin connector; BCM numbers, he
 
 Refreshing: page turns and menu moves are partial (no flash). A new screen, and every 8th page turn, is a fast refresh (about 1.5 s, one flash). Every 6th fast refresh, and the sleep screen, is a true full refresh (several flashes) that clears ghosting. Tune `FAST_BEFORE_FULL` in `ereader/display.py` and `FULL_REFRESH_EVERY` in `ereader/screens.py`.
 
+**Switch the Pi off with the button:** hold **select for 3 seconds** (at 0.7 s the options screen opens first, as usual; keep holding). The reader saves your page, leaves the sleep screen on the panel, and powers the Pi off. Wait for the green LED to stop blinking, then unplug. It needs passwordless `sudo` (the default for the first user on Raspberry Pi OS); if not, the press is ignored and the reader prints a `[power]` line to the log. Change the time with `power_hold=` in `main.py` (0 turns it off). Not on the keyboard: only the GPIO buttons do this.
+
 **Start on boot (systemd)**: only once the screen and buttons are connected. Without them the service crashes and restarts in a loop (see section 11).
 ```bash
 # Pi
