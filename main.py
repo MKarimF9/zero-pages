@@ -14,10 +14,11 @@ import signal
 import sys
 from pathlib import Path
 
-from ereader.controls import Button, GPIOControls, KeyboardControls
+from ereader.controls import Button, CombinedControls, GPIOControls, KeyboardControls
 from ereader.display import EPaperDisplay, PNGDisplay
 from ereader.fonts import DEFAULT_FAMILY, Fonts
 from ereader.power import can_power_off, power_off
+from ereader.remote import SocketControls, control_socket_path
 from ereader.screens import AppContext, effective_button, initial_screen
 from ereader.state import ReadingState
 
@@ -37,8 +38,10 @@ def main() -> None:
 
     display = (PNGDisplay(args.width, args.height) if args.display == "png"
                else EPaperDisplay())
+    # The buttons also listen on a private socket, so `python3 remote.py` over SSH can press them too.
     controls = (KeyboardControls() if args.controls == "keyboard"
-                else GPIOControls(up_pin=5, down_pin=6, select_pin=13))  # pick your pins
+                else CombinedControls(GPIOControls(up_pin=5, down_pin=6, select_pin=13),  # pick your pins
+                                      SocketControls(control_socket_path())))
 
     state = ReadingState()
     font_size = args.font_size or state.get_setting("font_size", 22)

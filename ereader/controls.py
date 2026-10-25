@@ -152,3 +152,19 @@ class GPIOControls(Controls):
 
     def wait(self) -> Button:
         return self._events.get()
+
+
+class CombinedControls(Controls):
+    """Several input sources at once (buttons and the SSH remote): whichever is pressed first."""
+
+    def __init__(self, *sources: Controls):
+        self._events: queue.Queue[Button] = queue.Queue()
+        for source in sources:
+            threading.Thread(target=self._pump, args=(source,), daemon=True).start()
+
+    def _pump(self, source: Controls) -> None:
+        while True:
+            self._events.put(source.wait())
+
+    def wait(self) -> Button:
+        return self._events.get()
