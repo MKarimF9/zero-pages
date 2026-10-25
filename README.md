@@ -78,7 +78,7 @@ Keys: `w`/`k` or the Up arrow = up, `s`/`j` or the Down arrow = down, space/ente
 Using it (three buttons only). The app opens the book you were last reading; pass `--start library` to open the library instead.
 - **Library:** up/down pick a book, select opens it. Your current book is a larger *Continue reading* card on top. **Hold select** (keyboard: `m`) for options: sort by recent, title or author, show all, reading, new or finished books, and choose the sleep screen.
 - **Covers and status:** each book shows its cover (books without one get a generated cover with the title), and either a NEW badge, a progress bar with percent, or a Finished mark. Covers are shrunk and dithered once, then cached in `~/.pi-ereader/covers`.
-- **Sleep screen:** after 60 seconds idle the e-paper shows the current book's cover, then powers down (the image stays with no power). In the library options you can switch it to *Page* to leave the current page instead. In the PNG preview, quitting writes `preview/sleep.png` so you can see it.
+- **Sleep screen:** after 60 seconds idle the e-paper shows an empty white screen, then powers down (the image stays with no power). In the library options you can switch it to *Cover* (the current book's cover) or *Page* (leave the current page). In the PNG preview, quitting writes `preview/sleep.png` so you can see it.
 - **Reading:** down = next page, up = previous page, **select = menu**.
 - **Menu** (it scrolls; a scrollbar shows where you are): Resume, Table of contents, **Bookmarks**, **Bookmark this page** / Remove bookmark, Back to library, Font (Literata, Noto Serif or Charis SIL), Font size (select cycles 18-32 and remembers it), Pin to top / Unpin, and **Delete this book**. Delete asks first ("Keep the book" is selected by default), then removes the file, your saved place, and its cached covers and pictures.
 - **Status bar** under each page: progress bar, chapter title, page in chapter, percent read. Right-to-left books are mirrored.
@@ -106,11 +106,11 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 4. Wire the buttons between a GPIO pin and GND (the Pi's internal pull-ups are used): **up = BCM 5** (header pin 29), **down = BCM 6** (pin 31), **select = BCM 13** (pin 33). The HAT uses BCM 17, 25, 8, 24, 18 and SPI, so avoid those. Change the pins in `main.py` if you like.
 5. Run it: `python3 main.py --books ~/books --display epaper --controls gpio`. The screen size comes from the panel; the keyboard and PNG options still work.
 
-The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a fast refresh.
+The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a fast refresh. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
 
    **Switching off.** Hold select for 3 seconds: the reader saves your page, leaves the sleep screen up and powers the Pi off (it needs passwordless `sudo`, which Raspberry Pi OS has by default). Unplug once the green LED stops blinking.
 
-   **Refreshing.** Page turns and moving a highlight are partial refreshes (no flash, a little ghosting). A new screen, and every 8th page turn, is a *fast* refresh: about 1.5 s with one flash. Every 6th of those, and the sleep screen, is a *true full* refresh (several flashes, about 3 s) that wipes the ghosting away. Change `FAST_BEFORE_FULL` in `ereader/display.py` (higher = fewer big flashes, more ghosting) or `FULL_REFRESH_EVERY` in `ereader/screens.py`. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
+   **Refreshing.** Page turns and moving a highlight are partial refreshes (no flash, a little ghosting). A new screen, and every 8th page turn, is a *fast* refresh: about 1.5 s with one flash. Every 6th of those, and the sleep screen, is a *true full* refresh (several flashes, about 3 s) that wipes the ghosting away. Change `FAST_BEFORE_FULL` in `ereader/display.py` (higher = fewer big flashes, more ghosting) or `FULL_REFRESH_EVERY` in `ereader/screens.py`.
 
 ## Long contents lists
 

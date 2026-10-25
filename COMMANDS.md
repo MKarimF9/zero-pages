@@ -122,7 +122,7 @@ python3 main.py --display png --controls gpio --books ~/books --width 400 --heig
 | Bookmarks | move (first row is *Back*) | go to the bookmark | **remove** the bookmark |
 | Delete this book? | choose *Keep the book* (default) or *Delete it* | confirm the choice | same as select |
 | Contents | move 1 row (or 5, 10, 25: see hold) | jump to the chapter (first row is *Back*) | change the jump size: 1, 5, 10, 25 |
-| Library options | move | change the value (*Sort by*, *Show*: All / Reading / New / Finished / **Up next** / one per category, *Sleep screen*), or open *Manage books over Wi-Fi*, or go back | same as select |
+| Library options | move | change the value (*Sort by*, *Show*: All / Reading / New / Finished / **Up next** / one per category, *Sleep screen*: Blank (default) / Cover / Page), or open *Manage books over Wi-Fi*, or go back | same as select |
 | Manage books over Wi-Fi | refresh | stop and go back | same as select |
 | Cards: deck list | move | open the deck (last row: back to the library) | same as select |
 | Cards: a deck | move | *Review* (cards due), *Browse all*, *Back to decks* | same as select |
