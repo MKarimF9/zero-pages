@@ -21,6 +21,7 @@ def make_ctx(tmp_path, cover=None):
 
 def test_reader_sleep_image_is_the_cover_full_screen(tmp_path):
     ctx, state, books = make_ctx(tmp_path, cover="epub3")
+    state.set_setting("sleep_screen", "cover")
     reader = LibraryScreen(ctx).handle(B.SELECT)
     img = reader.sleep_image()
     assert img.size == (400, 300) and img.mode == "1"
@@ -47,6 +48,7 @@ def test_page_setting_keeps_the_current_page(tmp_path):
 
 def test_library_sleeps_on_the_last_read_books_cover(tmp_path):
     ctx, state, books = make_ctx(tmp_path)
+    state.set_setting("sleep_screen", "cover")
     assert LibraryScreen(ctx).sleep_image() is None              # nothing read yet
     state.set_position(str(books / "a.epub"), 1, 0, 0.3)
     assert LibraryScreen(ctx).sleep_image().size == (400, 300)
@@ -59,8 +61,33 @@ def test_sleep_screen_option_cycles_and_persists(tmp_path):
     opts = LibraryScreen(ctx).handle(B.SELECT_LONG)
     assert isinstance(opts, LibraryOptionsScreen) and opts.render().size == (400, 300)
     opts.cursor = 2
-    assert opts.handle(B.SELECT) is None and state.get_setting("sleep_screen") == "page"
     assert opts.handle(B.SELECT) is None and state.get_setting("sleep_screen") == "cover"
+    assert opts.handle(B.SELECT) is None and state.get_setting("sleep_screen") == "page"
+    assert opts.handle(B.SELECT) is None and state.get_setting("sleep_screen") == "blank"
+
+
+def test_blank_is_the_default_sleep_screen(tmp_path):
+    ctx, state, books = make_ctx(tmp_path)
+    assert state.get_setting("sleep_screen") is None             # nothing chosen: the default applies
+    reader = LibraryScreen(ctx).handle(B.SELECT)
+    for screen in (reader, reader.handle(B.SELECT), LibraryScreen(ctx)):   # reading, its menu, the library
+        img = screen.sleep_image()
+        assert img.size == (400, 300) and img.convert("L").getextrema() == (255, 255)
+
+
+def test_a_chosen_cover_is_kept(tmp_path):
+    ctx, state, books = make_ctx(tmp_path, cover="epub3")
+    state.set_setting("sleep_screen", "cover")
+    assert LibraryScreen(ctx).handle(B.SELECT).sleep_image().convert("L").getextrema() != (255, 255)
+
+
+def test_blank_setting_leaves_an_empty_white_screen(tmp_path):
+    ctx, state, books = make_ctx(tmp_path)
+    state.set_setting("sleep_screen", "blank")
+    reader = LibraryScreen(ctx).handle(B.SELECT)
+    for screen in (reader, reader.handle(B.SELECT), LibraryScreen(ctx)):   # reading, its menu, the library
+        img = screen.sleep_image()
+        assert img.size == (400, 300) and img.convert("L").getextrema() == (255, 255)
 
 
 def test_placeholder_scales_up_for_the_sleep_screen():

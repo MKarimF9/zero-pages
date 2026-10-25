@@ -107,7 +107,8 @@ def effective_button(button: Button, screen: Screen) -> Button:
     return button
 
 
-SLEEP_SCREENS = {"cover": "Cover", "page": "Page"}
+SLEEP_SCREENS = {"blank": "Blank", "cover": "Cover", "page": "Page"}
+DEFAULT_SLEEP_SCREEN = "blank"   # an empty white screen; Cover and Page are the other choices
 SORTS = {"recent": "Recent", "title": "Title", "author": "Author"}
 FILTERS = {"all": "All", "reading": "Reading", "new": "New", "finished": "Finished", "want": "Up next"}
 CATEGORY_PREFIX = "cat:"
@@ -146,6 +147,15 @@ def cover_frame(ctx: AppContext, path: Path, title: str) -> Image.Image:
     img = blank(ctx)
     img.paste(cover, ((ctx.width - size[0]) // 2, 8))
     return img
+
+
+def sleep_screen_image(ctx: "AppContext", cover) -> Image.Image | None:
+    """What to leave on the panel when it goes idle, by the Sleep screen option: the book's
+    cover (`cover()`, which may say None), nothing new (the page stays), or an empty white screen."""
+    mode = ctx.state.get_setting("sleep_screen", DEFAULT_SLEEP_SCREEN)
+    if mode == "blank":
+        return Image.new("1", (ctx.width, ctx.height), 1)
+    return cover() if mode == "cover" else None
 
 
 def _next(options: dict, current: str) -> str:
@@ -442,12 +452,14 @@ class LibraryScreen(Screen):
         self._draw_status(d, self.books[i], x0, x1, y0 + height - 12, fg, rtl)
 
     def sleep_image(self) -> Image.Image | None:
-        """The cover of the book you were last reading."""
-        last = self.ctx.state.last_book
-        if self.ctx.state.get_setting("sleep_screen", "cover") != "cover" or not last or not Path(last).is_file():
-            return None
-        title = next((b.title for b in self.infos if str(b.path) == last), Path(last).stem)
-        return cover_frame(self.ctx, Path(last), title)
+        """The cover of the book you were last reading (or a blank screen, by the option)."""
+        def cover():
+            last = self.ctx.state.last_book
+            if not last or not Path(last).is_file():
+                return None
+            title = next((b.title for b in self.infos if str(b.path) == last), Path(last).stem)
+            return cover_frame(self.ctx, Path(last), title)
+        return sleep_screen_image(self.ctx, cover)
 
     def handle(self, button: Button) -> Screen | None:
         if button is Button.SELECT_LONG:
@@ -476,7 +488,7 @@ class LibraryOptionsScreen(Screen):
         choices = filter_choices(state)
         return [("sort", "sort", "Sort by", SORTS[state.get_setting("library_sort", "recent")]),
                 ("filter", "filter_list", "Show", choices.get(state.get_setting("library_filter", "all"), "All")),
-                ("sleep", "bedtime", "Sleep screen", SLEEP_SCREENS[state.get_setting("sleep_screen", "cover")]),
+                ("sleep", "bedtime", "Sleep screen", SLEEP_SCREENS[state.get_setting("sleep_screen", DEFAULT_SLEEP_SCREEN)]),
                 ("cards", "library_books", "Flash cards and quotes", ""),
                 ("upload", "cloud_upload", "Manage books over Wi-Fi", ""),
                 ("back", "arrow_back", "Back to library", "")]
@@ -499,7 +511,7 @@ class LibraryOptionsScreen(Screen):
         elif key == "filter":
             state.set_setting("library_filter", _next(filter_choices(state), state.get_setting("library_filter", "all")))
         elif key == "sleep":
-            state.set_setting("sleep_screen", _next(SLEEP_SCREENS, state.get_setting("sleep_screen", "cover")))
+            state.set_setting("sleep_screen", _next(SLEEP_SCREENS, state.get_setting("sleep_screen", DEFAULT_SLEEP_SCREEN)))
         elif key == "cards":
             from .cardscreens import DeckListScreen   # (it imports this file, so not at the top)
             return DeckListScreen(self.ctx)
@@ -689,10 +701,9 @@ class ReaderScreen(Screen):
             self.book = None
 
     def sleep_image(self) -> Image.Image | None:
-        """The cover of this book, unless the sleep screen is set to keep the page."""
-        if self.ctx.state.get_setting("sleep_screen", "cover") != "cover" or not self.book:
-            return None
-        return cover_frame(self.ctx, self.path, self.ctx.state.get_title(str(self.path)) or self.book.epub.title)
+        """The cover of this book, unless the sleep screen is set to keep the page or to be blank."""
+        return sleep_screen_image(self.ctx, lambda: self.book and cover_frame(
+            self.ctx, self.path, self.ctx.state.get_title(str(self.path)) or self.book.epub.title))
 
     def resume(self) -> "ReaderScreen":
         """Come back from a menu: the whole screen changed, so clear ghosting."""
