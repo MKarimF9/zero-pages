@@ -231,7 +231,7 @@ Refreshing: page turns and menu moves are partial (no flash). A new screen, and 
 ```bash
 cat ~/.pi-ereader/remote-pin
 ```
-Wrong PINs lock the page for a minute after five tries. The buttons are up, select, down and hold-select (options); it can't quit the reader or switch the Pi off. The screen picture on the page changes a second or two after a press (the e-paper itself takes that long). Turn the page off with `--no-web-remote` (add it to `ExecStart` in the service file). It only works while the Pi is on the same network as the phone.
+Your phone remembers the PIN after the first time (it forgets it if the PIN turns out wrong), and the page stops checking the screen while it's in the background. Wrong PINs lock the page for a minute after five tries. The buttons are up, select, down and hold-select (options); it can't quit the reader or switch the Pi off. The screen picture on the page changes a second or two after a press (the e-paper itself takes that long). Turn the page off with `--no-web-remote` (add it to `ExecStart` in the service file). It only works while the Pi is on the same network as the phone.
 
 **Press the buttons over SSH while the reader keeps running (service or hand-started with `--controls gpio`):**
 ```bash

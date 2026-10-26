@@ -95,3 +95,9 @@ def test_the_pin_is_created_once_and_kept_private(tmp_path):
     assert load_pin(path) == pin                                       # the same one next time
     path.write_text("not a pin")
     assert load_pin(path).isdigit()                                    # a damaged file is replaced
+
+
+def test_the_page_keeps_the_pin_on_the_phone_and_stops_checking_in_the_background():
+    from ereader.webremote import PAGE
+    assert "localStorage" in PAGE and "sessionStorage" not in PAGE
+    assert "document.hidden" in PAGE

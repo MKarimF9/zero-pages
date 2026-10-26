@@ -219,16 +219,20 @@ PAGE = """<!doctype html>
 <p id="msg" role="status"></p>
 <script>
 const $ = s => document.querySelector(s);
-let pin = sessionStorage.getItem('pin') || '', last = -1, url = null;
+// The phone keeps the PIN, so you type it once. (Storage can be blocked, e.g. in a private tab.)
+const store = {get: () => { try { return localStorage.getItem('remote-pin') || ''; } catch (e) { return ''; } },
+               set: v => { try { localStorage.setItem('remote-pin', v); } catch (e) {} },
+               clear: () => { try { localStorage.removeItem('remote-pin'); } catch (e) {} }};
+let pin = store.get(), last = -1, url = null;
 const msg = t => { $('#msg').textContent = t || ''; };
-function lock(text) { $('#pinbox').hidden = false; $('#app').hidden = true; sessionStorage.removeItem('pin'); pin = ''; msg(text); }
+function lock(text) { $('#pinbox').hidden = false; $('#app').hidden = true; store.clear(); pin = ''; msg(text); }
 async function api(path, opts) {
   const r = await fetch(path, Object.assign({headers: {'X-PIN': pin}}, opts));
   if (r.status === 403 || r.status === 429) { lock((await r.json()).error); throw new Error('locked'); }
   return r;
 }
 async function refresh() {
-  if ($('#app').hidden) return;
+  if ($('#app').hidden || document.hidden) return;   // no checking while the page is in the background
   try {
     const f = (await (await api('/api/frame')).json()).frame;
     if (f !== last) {
@@ -242,11 +246,12 @@ async function press(b) {
   catch (e) { if (e.message !== 'locked') msg('Could not reach the reader.'); }
 }
 function unlocked() { $('#pinbox').hidden = true; $('#app').hidden = false; msg(''); refresh(); }
-$('#go').onclick = async () => { pin = $('#pin').value.trim(); sessionStorage.setItem('pin', pin);
-  try { await api('/api/frame'); unlocked(); } catch (e) {} };
+$('#go').onclick = async () => { pin = $('#pin').value.trim();
+  try { await api('/api/frame'); store.set(pin); unlocked(); } catch (e) {} };
 $('#pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').click(); });
 for (const b of ['up', 'down', 'select', 'hold']) $('#' + b).onclick = () => press(b);
 setInterval(refresh, 1500);
+document.addEventListener('visibilitychange', refresh);
 if (pin) api('/api/frame').then(unlocked).catch(() => {}); else lock('');
 </script></body></html>
 """
