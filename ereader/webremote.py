@@ -1,5 +1,5 @@
-"""The reader's buttons on your phone: a web page with up / select / down / hold buttons and
-a live copy of the screen. Runs inside the reader (the boot service) on its own port.
+"""The reader's buttons on your phone: a web page with up / select / down / hold buttons.
+Runs inside the reader (the boot service) on its own port.
 
   - the page itself is public; every other request needs the PIN (X-PIN header);
   - the PIN is six digits kept in ~/.pi-ereader/remote-pin (read it over SSH: cat that file);
@@ -9,7 +9,6 @@ a live copy of the screen. Runs inside the reader (the boot service) on its own 
 from __future__ import annotations
 
 import hmac
-import io
 import json
 import os
 import queue
@@ -19,8 +18,6 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-
-from PIL import Image
 
 from .controls import Button, Controls
 
@@ -66,28 +63,10 @@ class QueueControls(Controls):
         return self._events.get()
 
 
-class LatestFrame:
-    """The picture the reader last put on the screen, as PNG bytes, for the phone to show."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self.number, self._png = 0, b""
-
-    def set(self, image: Image.Image) -> None:
-        buf = io.BytesIO()
-        image.convert("1").save(buf, format="PNG")
-        with self._lock:
-            self.number, self._png = self.number + 1, buf.getvalue()
-
-    def get(self) -> tuple[int, bytes]:
-        with self._lock:
-            return self.number, self._png
-
-
 class WebRemote:
-    def __init__(self, controls: QueueControls, frame: LatestFrame, pin: str, host: str = "0.0.0.0",
+    def __init__(self, controls: QueueControls, pin: str, host: str = "0.0.0.0",
                  port: int = PORT, lockout: float = LOCKOUT_SECONDS, clock=time.monotonic):
-        self.controls, self.frame, self.pin = controls, frame, pin
+        self.controls, self.pin = controls, pin
         self._lockout, self._clock = lockout, clock
         self._lock = threading.Lock()
         self._failures, self._locked_until = 0, 0.0
@@ -155,16 +134,9 @@ class _Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/":
             self._send(200, PAGE.encode(), "text/html; charset=utf-8")
-        elif path == "/api/frame" and self._authorized():
-            self._json(200, {"frame": self.app.frame.get()[0]})
-        elif path == "/api/screen.png" and self._authorized():
-            number, png = self.app.frame.get()
-            if png:
-                self._send(200, png, "image/png")
-            else:
-                self._json(404, {"error": "Nothing has been drawn yet."})
-        elif path in ("/api/frame", "/api/screen.png"):
-            pass   # _authorized already answered
+        elif path == "/api/check":   # does the PIN fit? (the page unlocks on a 200)
+            if self._authorized():
+                self._json(200, {"ok": True})
         else:
             self._json(404, {"error": "Not found."})
 
@@ -191,7 +163,6 @@ PAGE = """<!doctype html>
   body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:16px/1.4 system-ui, sans-serif; max-width:480px; margin-inline:auto; }
   h1 { font-size:1.1rem; margin:0 0 12px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
-  #shot { display:block; width:100%; image-rendering:pixelated; background:#fff; border:1px solid var(--line); }
   .pad { display:grid; grid-template-columns:1fr; gap:10px; }
   button { font:inherit; font-weight:600; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:12px; min-height:64px; touch-action:manipulation; }
   button.main { background:var(--accent); color:var(--accent-fg); border-color:var(--accent); }
@@ -207,7 +178,6 @@ PAGE = """<!doctype html>
   <button class="main" id="go" style="width:100%">Unlock</button>
 </div>
 <div id="app" hidden>
-  <div class="card"><img id="shot" alt="The e-reader screen" width="400" height="300"></div>
   <div class="pad">
     <button id="up">Up</button>
     <button class="main" id="select">Select</button>
@@ -223,7 +193,7 @@ const $ = s => document.querySelector(s);
 const store = {get: () => { try { return localStorage.getItem('remote-pin') || ''; } catch (e) { return ''; } },
                set: v => { try { localStorage.setItem('remote-pin', v); } catch (e) {} },
                clear: () => { try { localStorage.removeItem('remote-pin'); } catch (e) {} }};
-let pin = store.get(), last = -1, url = null;
+let pin = store.get();
 const msg = t => { $('#msg').textContent = t || ''; };
 function lock(text) { $('#pinbox').hidden = false; $('#app').hidden = true; store.clear(); pin = ''; msg(text); }
 async function api(path, opts) {
@@ -231,27 +201,15 @@ async function api(path, opts) {
   if (r.status === 403 || r.status === 429) { lock((await r.json()).error); throw new Error('locked'); }
   return r;
 }
-async function refresh() {
-  if ($('#app').hidden || document.hidden) return;   // no checking while the page is in the background
-  try {
-    const f = (await (await api('/api/frame')).json()).frame;
-    if (f !== last) {
-      const r = await api('/api/screen.png');
-      if (r.ok) { const u = URL.createObjectURL(await r.blob()); $('#shot').src = u; if (url) URL.revokeObjectURL(url); url = u; last = f; }
-    }
-  } catch (e) {}
-}
 async function press(b) {
-  try { await api('/api/press?button=' + b, {method: 'POST'}); msg(''); setTimeout(refresh, 800); setTimeout(refresh, 2500); }
+  try { await api('/api/press?button=' + b, {method: 'POST'}); msg(''); }
   catch (e) { if (e.message !== 'locked') msg('Could not reach the reader.'); }
 }
-function unlocked() { $('#pinbox').hidden = true; $('#app').hidden = false; msg(''); refresh(); }
+function unlocked() { $('#pinbox').hidden = true; $('#app').hidden = false; msg(''); }
 $('#go').onclick = async () => { pin = $('#pin').value.trim();
-  try { await api('/api/frame'); store.set(pin); unlocked(); } catch (e) {} };
+  try { await api('/api/check'); store.set(pin); unlocked(); } catch (e) {} };
 $('#pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').click(); });
 for (const b of ['up', 'down', 'select', 'hold']) $('#' + b).onclick = () => press(b);
-setInterval(refresh, 1500);
-document.addEventListener('visibilitychange', refresh);
-if (pin) api('/api/frame').then(unlocked).catch(() => {}); else lock('');
+if (pin) api('/api/check').then(unlocked).catch(() => {}); else lock('');
 </script></body></html>
 """

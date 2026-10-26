@@ -227,11 +227,11 @@ Display wiring (Waveshare 4.2" V2 module with a 9-pin connector; BCM numbers, he
 
 Refreshing: page turns and menu moves are partial (no flash). A new screen, and every 8th page turn, is a fast refresh (about 1.5 s, one flash). Every 6th fast refresh, and the sleep screen, is a true full refresh (several flashes) that clears ghosting. Tune `FAST_BEFORE_FULL` in `ereader/display.py` and `FULL_REFRESH_EVERY` in `ereader/screens.py`.
 
-**Phone buttons (the reader's buttons on your phone, with a live copy of the screen):** with the boot service (or `--controls gpio`) running, open **http://books.local:8090** on a phone on the same Wi-Fi. The PIN is six digits, made the first time the reader starts; read it on the Pi:
+**Phone buttons (the reader's buttons on your phone):** with the boot service (or `--controls gpio`) running, open **http://books.local:8090** on a phone on the same Wi-Fi. The PIN is six digits, made the first time the reader starts; read it on the Pi:
 ```bash
 cat ~/.pi-ereader/remote-pin
 ```
-Your phone remembers the PIN after the first time (it forgets it if the PIN turns out wrong), and the page stops checking the screen while it's in the background. Wrong PINs lock the page for a minute after five tries. The buttons are up, select, down and hold-select (options); it can't quit the reader or switch the Pi off. The screen picture on the page changes a second or two after a press (the e-paper itself takes that long). Turn the page off with `--no-web-remote` (add it to `ExecStart` in the service file). It only works while the Pi is on the same network as the phone.
+Your phone remembers the PIN after the first time (it forgets it if the PIN turns out wrong),. Wrong PINs lock the page for a minute after five tries. The buttons are up, select, down and hold-select (options); it can't quit the reader or switch the Pi off. Turn the page off with `--no-web-remote` (add it to `ExecStart` in the service file). It only works while the Pi is on the same network as the phone.
 
 **Press the buttons over SSH while the reader keeps running (service or hand-started with `--controls gpio`):**
 ```bash
