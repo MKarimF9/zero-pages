@@ -108,6 +108,8 @@ Written for the **Waveshare 4.2" V2** panel (400x300) and three push buttons. No
 
 The panel goes to sleep by itself after 60 seconds with no page turn (the image stays), and the next turn after that is a fast refresh. To start on boot, edit `deploy/pi-ereader.service` (it explains the install steps) and enable it with systemd. Your user must be in the `spi` and `gpio` groups.
 
+   **Phone buttons.** With `--controls gpio` (the boot service) the reader also serves a page at `http://books.local:8090` with up, select, down and hold buttons and a live copy of the screen. It needs the six-digit PIN in `~/.pi-ereader/remote-pin`, and can't quit the reader or switch the Pi off.
+
    **Over SSH.** `python3 remote.py` presses the running reader's buttons from an SSH session (keys w/s/space/m, q to leave), while the physical buttons keep working. It talks to a private socket in `~/.pi-ereader/`, so it works with the boot service and needs no extra setup.
 
    **Switching off.** Hold select for 3 seconds: the reader saves your page, leaves the sleep screen up and powers the Pi off (it needs passwordless `sudo`, which Raspberry Pi OS has by default). Unplug once the green LED stops blinking.
