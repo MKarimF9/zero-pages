@@ -1,10 +1,23 @@
-# pi-ereader
+# Zero Pages
 
 A DIY e-paper ebook reader for the original Raspberry Pi Zero W (ARMv6, 512 MB RAM), written in Python.
 
 **Every command, URL and troubleshooting tip is in [COMMANDS.md](COMMANDS.md).**
 
 The structure is modeled on [atomic14's ESP32 ePub reader](https://github.com/atomic14/diy-esp32-epub-reader) (MIT license): the same pipeline, the same three-button controls, and the same split between app logic and hardware. No code was copied from it; this is an independent Python version for Linux hardware. [PiBook](https://github.com/rolohaun/PiBook) is a second reference for Pi- and Waveshare-specific parts.
+
+## Features
+
+- **Arabic and RTL first:** shaped Arabic, mirrored rows, verses kept with their translation, hadith books.
+- **Fast on e-paper:** partial refresh while reading, a fast refresh for screen changes, a full clear now and then.
+- **Library:** covers, reading status, sort and filter, categories, Up next, pinned books, rename, delete.
+- **Reading:** bookmarks, chapter jumps inside one file, pictures, long chapters that lay out in bounded memory.
+- **Manage from your phone:** add and organise books over Wi-Fi with a QR code, and use the phone as a remote.
+- **Remote over SSH:** `python3 remote.py` presses the buttons while the physical ones keep working.
+- **Flash cards and quotes.**
+- **Hardware:** three GPIO buttons, long-press menu, 3-second hold to power off safely, blank idle screen, boot service.
+
+Each feature was built on its own branch and merged with `--no-ff`, so `git log --graph --first-parent` reads as one entry per feature. The tags (`feature/...`) mark those merges.
 
 ## How it fits together
 

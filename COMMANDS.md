@@ -51,7 +51,7 @@ tmux attach               # come back to it later
 | Preview of the screen (Pi) | http://192.168.1.50:8000 | the reader **and** the preview server running on the Pi |
 | Preview of the screen (Mac) | http://localhost:8000 | the same two things, running on the Mac |
 | Manage books over Wi-Fi (add, categories, Up next, pin, delete) | the address and PIN shown on the reader's *Manage books* screen, e.g. http://192.168.1.50:8080 | the reader on that screen, or `python3 -m ereader.upload` |
-| The code on GitHub (private) | https://github.com/MKarimF9/zero-pages | your GitHub login |
+| The code on GitHub | https://github.com/MKarimF9/zero-pages | your GitHub login |
 | PDFLoom backend (PDF to EPUB) | http://localhost:3000 | PDFLoom backend running on the Mac |
 
 ---

@@ -1,0 +1,11 @@
+Third-party material in this repository
+
+- assets/MaterialSymbols-subset.ttf: a subset of Google's Material Symbols,
+  licensed under the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
+- assets/fonts/*: Amiri Quran, Charis SIL, Literata, Noto Naskh Arabic and
+  Noto Serif, each under the SIL Open Font License; the licence texts are the
+  OFL-*.txt files next to the fonts.
+- ereader/qrcodegen.py: Nayuki's QR Code generator library, MIT licence
+  (see the header of that file).
+- The Waveshare e-paper driver is not included. See the README for how to
+  install it into lib/waveshare_epd.
